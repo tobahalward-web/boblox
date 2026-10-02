@@ -97,40 +97,35 @@ Config.CPUStyles = {
 -- For a punchier mix, swap any of these for audio IDs from the Creator Store,
 -- e.g. Config.Sounds.HitHeavy = "rbxassetid://<id>"
 Config.Sounds = {
-	-- A fist sound is a stack of layers: a low body thump, a fleshy slap and a bone-knock crack. The first
-	-- layer in each stack uses a client sound that is known to exist; the extra layers just add punch.
+	-- A fist sound is a stack of layers: a low body thump plus a fleshy slap. Pitched low and with no
+	-- metallic / electronic layers, so impacts sound like flesh and not zaps.
 	Whoosh = { layers = {
-		{ id = "rbxasset://sounds/swordlunge.wav", volume = 0.18, pitch = { 2.0, 2.4 } },
+		{ id = "rbxasset://sounds/action_jump.mp3", volume = 0.22, pitch = { 1.7, 2.0 } },
 		{ id = "rbxasset://sounds/swoosh.mp3", volume = 0.3, pitch = { 1.5, 1.9 } },
 	} },
 	WhooshHeavy = { layers = {
-		{ id = "rbxasset://sounds/swordslash.wav", volume = 0.2, pitch = { 1.4, 1.6 } },
+		{ id = "rbxasset://sounds/action_jump.mp3", volume = 0.25, pitch = { 1.2, 1.4 } },
 		{ id = "rbxasset://sounds/swoosh.mp3", volume = 0.45, pitch = { 1.0, 1.25 } },
 	} },
 	HitLight = { layers = {
 		{ id = "rbxasset://sounds/action_jump_land.mp3", volume = 1.3, pitch = { 1.0, 1.2 } },
-		{ id = "rbxasset://sounds/splat.mp3", volume = 0.55, pitch = { 1.5, 1.8 } },
-		{ id = "rbxasset://sounds/hit.mp3", volume = 0.45, pitch = { 1.2, 1.45 } },
+		{ id = "rbxasset://sounds/splat.mp3", volume = 0.5, pitch = { 1.0, 1.2 } },
 	} },
 	HitHeavy = { layers = {
 		{ id = "rbxasset://sounds/action_jump_land.mp3", volume = 1.9, pitch = { 0.6, 0.72 } },
 		{ id = "rbxasset://sounds/splat.mp3", volume = 0.9, pitch = { 0.95, 1.15 } },
-		{ id = "rbxasset://sounds/hit.mp3", volume = 0.8, pitch = { 0.75, 0.9 } },
-		{ id = "rbxasset://sounds/snap.mp3", volume = 0.4, pitch = { 0.8, 0.95 } },
 	} },
 	Block = { layers = {
-		{ id = "rbxasset://sounds/action_jump_land.mp3", volume = 0.7, pitch = { 1.3, 1.5 } },
-		{ id = "rbxasset://sounds/clickfast.mp3", volume = 0.5, pitch = { 0.7, 0.85 } },
+		{ id = "rbxasset://sounds/action_jump_land.mp3", volume = 0.8, pitch = { 0.85, 1.0 } },
+		{ id = "rbxasset://sounds/splat.mp3", volume = 0.25, pitch = { 0.7, 0.8 } },
 	} },
 	Counter = { layers = {
 		{ id = "rbxasset://sounds/action_jump_land.mp3", volume = 1.7, pitch = { 0.55, 0.65 } },
-		{ id = "rbxasset://sounds/snap.mp3", volume = 0.9, pitch = { 1.1, 1.3 } },
 		{ id = "rbxasset://sounds/splat.mp3", volume = 0.7, pitch = { 1.0, 1.2 } },
 	} },
 	Launch = { layers = {
 		{ id = "rbxasset://sounds/action_jump_land.mp3", volume = 1.6, pitch = { 0.5, 0.58 } },
-		{ id = "rbxasset://sounds/swordslash.wav", volume = 0.25, pitch = { 1.1, 1.3 } },
-		{ id = "rbxasset://sounds/hit.mp3", volume = 0.8, pitch = { 0.6, 0.7 } },
+		{ id = "rbxasset://sounds/action_jump.mp3", volume = 0.3, pitch = { 1.0, 1.2 } },
 	} },
 	Land = { id = "rbxasset://sounds/action_falling.mp3", volume = 0.7, pitch = { 0.7, 0.8 } },
 	Step = { id = "rbxasset://sounds/action_footsteps_plastic.mp3", volume = 0.25, pitch = { 1.0, 1.2 } },

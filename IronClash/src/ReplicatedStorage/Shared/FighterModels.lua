@@ -301,26 +301,42 @@ local function face(head, look)
 			ell(head, V(0.06, 0.12, 0.46), V(0.45 * sx, 0.05, -0.2), C(20, 20, 26), M.Metal)
 		end
 	elseif look.face ~= "helmet" then
+		local skin = look.skin
+		local shade = Color3.new(skin.R * 0.86, skin.G * 0.82, skin.B * 0.82)
+		local lipCol = Color3.new(math.min(skin.R * 0.82 + 0.06, 1), skin.G * 0.58, skin.B * 0.58)
 		for _, sx in ipairs({ -1, 1 }) do
-			local cf = onHead(head, V(0.39 * sx, 0.02, -0.92))
-			vis(head, "ellipsoid", V(0.21, 0.28, 0.05), cf, dark, SP, { noShadow = true })
-			vis(head, "ellipsoid", V(0.15, 0.2, 0.05), cf * CFrame.new(0, -0.02, -0.014), look.eye, SP, { noShadow = true })
-			vis(head, "ellipsoid", V(0.08, 0.12, 0.05), cf * CFrame.new(0, -0.03, -0.022), C(16, 12, 20), SP, { noShadow = true })
-			vis(head, "ellipsoid", V(0.065, 0.075, 0.05), cf * CFrame.new(-0.035 * sx, 0.05, -0.03), C(255, 255, 255), M.Neon, { noShadow = true })
-			vis(head, "ellipsoid", V(0.27, 0.055, 0.05), cf * CFrame.new(0.01 * sx, 0.14, -0.012) * CFrame.Angles(0, 0, rad(-6 * sx)), dark, SP, { noShadow = true })
+			-- eye socket: a soft shadow under the brow ridge gives the face depth
+			local sock = onHead(head, V(0.37 * sx, 0.07, -0.92), -0.03)
+			vis(head, "ellipsoid", V(0.3, 0.17, 0.05), sock * CFrame.Angles(0, 0, rad(-5 * sx)), shade, SP, { noShadow = true })
+			-- almond eye: white, iris, pupil, catch-light
+			local cf = onHead(head, V(0.37 * sx, 0.04, -0.93))
+			vis(head, "ellipsoid", V(0.2, 0.125, 0.05), cf * CFrame.Angles(0, 0, rad(-4 * sx)), C(240, 238, 242), SP, { noShadow = true })
+			vis(head, "ellipsoid", V(0.115, 0.115, 0.05), cf * CFrame.new(-0.012 * sx, 0, -0.012), look.eye, SP, { noShadow = true })
+			vis(head, "ellipsoid", V(0.06, 0.07, 0.05), cf * CFrame.new(-0.012 * sx, 0, -0.02), C(16, 12, 20), SP, { noShadow = true })
+			vis(head, "ellipsoid", V(0.036, 0.04, 0.05), cf * CFrame.new(-0.035 * sx, 0.03, -0.026), C(255, 255, 255), M.Neon, { noShadow = true })
 			-- eyelid (skin + lash line), invisible until Shared/Life closes it for a blink
-			local lid = vis(head, "ellipsoid", V(0.23, 0.31, 0.06), cf * CFrame.new(0, 0.0, -0.034), look.skin, SP, { noShadow = true, name = "Eyelid" })
+			local lid = vis(head, "ellipsoid", V(0.22, 0.15, 0.06), cf * CFrame.new(0, 0, -0.03), skin, SP, { noShadow = true, name = "Eyelid" })
 			lid.Transparency = 1
-			local lash = vis(head, "ellipsoid", V(0.22, 0.035, 0.06), cf * CFrame.new(0, -0.05, -0.04), dark, SP, { noShadow = true, name = "Eyelid" })
+			local lash = vis(head, "ellipsoid", V(0.21, 0.03, 0.06), cf * CFrame.new(0, -0.02, -0.04), dark, SP, { noShadow = true, name = "Eyelid" })
 			lash.Transparency = 1
-			local tilt = (look.brows == "calm") and 4 or 14
-			local bcf = onHead(head, V(0.37 * sx, 0.33, -0.86))
-			vis(head, "ellipsoid", V(0.27, 0.065, 0.05), bcf * CFrame.Angles(0, 0, rad(-tilt * sx)), look.browColor or look.hair, SP, { noShadow = true })
+			-- upper lash line and a strong brow
+			vis(head, "ellipsoid", V(0.24, 0.04, 0.05), cf * CFrame.new(0.008 * sx, 0.07, -0.014) * CFrame.Angles(0, 0, rad(7 * sx)), dark, SP, { noShadow = true })
+			local tilt = (look.brows == "calm") and 3 or 13
+			local bcf = onHead(head, V(0.36 * sx, 0.3, -0.88))
+			vis(head, "ellipsoid", V(0.3, 0.06, 0.07), bcf * CFrame.Angles(0, 0, rad(-tilt * sx)), look.browColor or look.hair, SP, { noShadow = true })
 		end
-		-- nose and mouth
-		ell(head, V(0.1, 0.13, 0.14), V(0, -0.1, -0.5), look.skin, SP, { noShadow = true })
-		local mcf = onHead(head, V(0.02, -0.42, -0.9))
-		vis(head, "ellipsoid", V(0.17, 0.04, 0.05), mcf * CFrame.Angles(0, 0, rad(look.smirk or 4)), C(120, 60, 60), SP, { noShadow = true })
+		-- nose: bridge, tip and nostril shadows
+		ell(head, V(0.09, 0.3, 0.12), V(0, -0.02, -0.46), skin, SP, { noShadow = true })
+		ell(head, V(0.13, 0.1, 0.13), V(0, -0.13, -0.5), skin, SP, { noShadow = true })
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(head, V(0.035, 0.03, 0.04), V(0.04 * sx, -0.17, -0.54), shade, SP, { noShadow = true })
+		end
+		-- lips: fuller lower lip, thin dark mouth line between
+		local mcf = onHead(head, V(0.0, -0.4, -0.9))
+		local sm = look.smirk or 4
+		vis(head, "ellipsoid", V(0.2, 0.03, 0.05), mcf * CFrame.new(0, 0.012, 0) * CFrame.Angles(0, 0, rad(sm)), lipCol, SP, { noShadow = true })
+		vis(head, "ellipsoid", V(0.16, 0.04, 0.05), mcf * CFrame.new(0, -0.03, 0.004) * CFrame.Angles(0, 0, rad(sm)), lipCol, SP, { noShadow = true })
+		vis(head, "ellipsoid", V(0.19, 0.012, 0.05), mcf * CFrame.new(0, -0.003, -0.004) * CFrame.Angles(0, 0, rad(sm)), C(70, 30, 34), SP, { noShadow = true })
 		if look.beard then
 			ell(head, V(0.56, 0.3, 0.34), V(0, -0.38, -0.3), look.hair, SP)
 			ell(head, V(0.3, 0.1, 0.16), V(0, -0.22, -0.46), look.hair, SP) -- moustache
@@ -825,10 +841,13 @@ function FighterModels.build(id, palette, displayName)
 	-- head
 	local head = B.Head
 	if look.face ~= "helmet" then
-		ell(head, V(0.98, 1.04, 0.98), V(0, -0.02, 0), look.skin)
-		ell(head, V(0.8, 0.56, 0.86), V(0, -0.27, -0.05), look.skin) -- jaw and chin
+		ell(head, V(0.96, 1.0, 0.98), V(0, 0.06, 0.02), look.skin) -- cranium
+		-- cheeks narrowing into a defined jaw and chin (overlapping masses, no visible seam)
+		ell(head, V(0.88, 0.56, 0.92), V(0, -0.14, -0.03), look.skin)
+		ell(head, V(0.66, 0.46, 0.76), V(0, -0.3, -0.08), look.skin)
+		ell(head, V(0.38, 0.3, 0.44), V(0, -0.42, -0.13), look.skin) -- chin
 		for _, sx in ipairs({ -1, 1 }) do
-			ell(head, V(0.12, 0.22, 0.16), V(0.48 * sx, -0.04, 0.02), look.skin)
+			ell(head, V(0.1, 0.22, 0.16), V(0.48 * sx, -0.02, 0.04), look.skin)
 		end
 	end
 	face(head, look)
