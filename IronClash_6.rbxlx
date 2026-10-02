@@ -3041,8 +3041,10 @@ local hairScale = 1 -- per-fighter silhouette multiplier, set in build()
 local function spike(head, base, dir, len, thick, color, roll)
 	local d = dir.Unit
 	len = len * hairScale
-	local tip = base + d * len
-	return vis(head, "ellipsoid", V(thick, thick * 0.78, len * 2), head.CFrame * CFrame.lookAt(base, tip) * CFrame.Angles(0, 0, roll or 0), color, SP)
+	-- The blade starts at `base` (in the scalp) and runs out to the tip. The ellipsoid is centred along that
+	-- run; centring it on the base would push its back half through the skull and out of the face.
+	local mid = base + d * (len * 0.5)
+	return vis(head, "ellipsoid", V(thick, thick * 0.78, len * 1.15), head.CFrame * CFrame.lookAt(mid, mid + d) * CFrame.Angles(0, 0, roll or 0), color, SP)
 end
 
 local function hairCap(head, color, size, offset)
@@ -3051,10 +3053,16 @@ end
 
 -- long front locks that fall between the eyes and sway (secondary motion) - the classic anime fringe
 local function bangs(head, look, xs, len)
+	-- Side locks that hang in front of the ears and sway. They stay on the temples (x ~ +-0.5), well clear of
+	-- the eyes and nose, and fall straight down against the head so no hair ever pokes into the face.
 	for i, x in ipairs(xs) do
-		chain(head, "Bang" .. i, V(x, 0.4, -0.37), { V(x * 0.5, -1, -0.28), V(x * 0.3, -1, -0.1) }, { len * 0.55, len * 0.45 }, function(bone, n, s0, e0)
-			strand(bone, s0, e0, 0.16 - 0.05 * n, 0.1, look.hair)
-		end, { stiff = 110, drag = 11, limit = 50 })
+		if math.abs(x) > 0.3 then
+			local side = (x < 0) and -1 or 1
+			chain(head, "Bang" .. i, V(side * 0.47, 0.3, -0.12), { V(side * 0.06, -1, -0.1), V(side * 0.03, -1, 0.04) }, { len * 0.45, len * 0.4 },
+				function(bone, n, s0, e0)
+					strand(bone, s0, e0, 0.15 - 0.05 * n, 0.1, look.hair)
+				end, { stiff = 120, drag = 12, limit = 40 })
+		end
 	end
 end
 
@@ -3074,12 +3082,12 @@ HAIR.spiky = function(head, look)
 		spike(head, d * 0.36 + V(0, 0.12, 0.05), d, sp[2], 0.4, c, rad((i % 3 - 1) * 25))
 	end
 	for _, x in ipairs({ -0.24, 0, 0.24 }) do
-		spike(head, V(x, 0.42, -0.3), V(x * 0.7, -0.55, -0.55), 0.48, 0.32, c, 0)
+		spike(head, V(x, 0.42, -0.22), V(x * 0.7, 0.5, -0.75), 0.26, 0.3, c, 0)
 	end
 	if look.accent then
-		spike(head, V(0.2, 0.45, -0.25), V(0.5, -0.7, -0.4), 0.5, 0.24, look.accent, 0)
+		spike(head, V(0.2, 0.43, -0.22), V(0.6, 0.45, -0.7), 0.28, 0.22, look.accent, 0)
 	end
-	bangs(head, look, { -0.2, 0.05, 0.3 }, 0.62)
+	bangs(head, look, { -0.5, 0.1, 0.5 }, 0.55)
 end
 
 HAIR.ponytail = function(head, look)
@@ -3093,13 +3101,13 @@ HAIR.ponytail = function(head, look)
 			end, { stiff = 100, drag = 10, limit = 55 })
 	end
 	for i, x in ipairs({ -0.3, -0.12, 0.08, 0.26 }) do
-		spike(head, V(x, 0.42, -0.3), V(0.35, -0.6, -0.5), 0.42 + i * 0.03, 0.28, c, 0)
+		spike(head, V(x, 0.42, -0.22), V(0.35, 0.5, -0.75), 0.24 + i * 0.02, 0.26, c, 0)
 	end
 	vcyl(head, 0.14, 0.3, V(0, 0.5, 0.36), look.trim, SP)
 	for _, sx in ipairs({ -1, 1 }) do -- ribbon bow
 		ell(head, V(0.34, 0.2, 0.12), V(0.17 * sx, 0.54, 0.4), look.trim, M.Fabric, nil, CFrame.Angles(0, 0, rad(-25 * sx)))
 	end
-	bangs(head, look, { -0.15, 0.12 }, 0.5)
+	bangs(head, look, { -0.5, 0.5 }, 0.5)
 	-- the ponytail: arcs back from the tie, then hangs
 	local dirs = { V(0, -0.15, 1), V(0, -0.55, 0.85), V(0, -1, 0.4), V(0, -1, 0.1) }
 	local widths = { 0.4, 0.36, 0.3, 0.2 }
@@ -3137,8 +3145,8 @@ HAIR.slick = function(head, look)
 		end
 		spike(head, d * 0.32 + V(0, 0.16, 0.05), d, sp[2], 0.38, col, rad((i % 2) * 180))
 	end
-	spike(head, V(0.18, 0.42, -0.3), V(0.35, -0.8, -0.35), 0.62, 0.26, look.accent or c, 0)
-	bangs(head, look, { -0.25, 0.0 }, 0.7)
+	spike(head, V(0.18, 0.42, -0.22), V(0.5, 0.45, -0.75), 0.3, 0.24, look.accent or c, 0)
+	bangs(head, look, { -0.5, 0.0, 0.5 }, 0.6)
 end
 
 HAIR.messy = function(head, look)
@@ -3158,7 +3166,7 @@ HAIR.messy = function(head, look)
 		end
 	end
 	for _, x in ipairs({ -0.28, -0.08, 0.12, 0.3 }) do
-		spike(head, V(x, 0.42, -0.3), V(-x * 0.5, -0.6, -0.5), 0.4, 0.28, c, 0)
+		spike(head, V(x, 0.42, -0.22), V(-x * 0.5, 0.5, -0.75), 0.24, 0.26, c, 0)
 	end
 	if look.goggles then
 	-- adventurer goggles pushed up on the forehead, strap and a pair of tinted lenses
@@ -3175,7 +3183,7 @@ HAIR.messy = function(head, look)
 			end, { stiff = 90, drag = 10, limit = 60 })
 	end
 	end
-	bangs(head, look, { -0.28, 0.2 }, 0.45)
+	bangs(head, look, { -0.5, 0.1, 0.5 }, 0.5)
 end
 
 HAIR.helmet = function(head, look)
