@@ -1,0 +1,280 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+	<Meta name="ExplicitAutoJoints">true</Meta>
+	<External>null</External>
+	<External>nil</External>
+	<Item class="Workspace" referent="RBX00000001">
+		<Properties>
+			<string name="Name">Workspace</string>
+			<bool name="StreamingEnabled">false</bool>
+			<float name="FallenPartsDestroyHeight">-2000</float>
+			<float name="Gravity">196.2</float>
+		</Properties>
+	</Item>
+	<Item class="Lighting" referent="RBX00000002">
+		<Properties>
+			<string name="Name">Lighting</string>
+			<token name="Technology">4</token>
+			<bool name="GlobalShadows">true</bool>
+			<float name="ClockTime">0.3</float>
+			<float name="Brightness">1.2</float>
+			<Color3 name="Ambient"><R>0.3059</R><G>0.2824</G><B>0.3843</B></Color3>
+			<Color3 name="OutdoorAmbient"><R>0.4392</R><G>0.4078</G><B>0.5490</B></Color3>
+			<float name="EnvironmentDiffuseScale">0.85</float>
+			<float name="EnvironmentSpecularScale">0.55</float>
+		</Properties>
+		<Item class="Sky" referent="RBX00000003">
+			<Properties>
+				<string name="Name">IC_Sky</string>
+				<int name="StarCount">3000</int>
+			</Properties>
+		</Item>
+		<Item class="Atmosphere" referent="RBX00000004">
+			<Properties>
+				<string name="Name">IC_Atmosphere</string>
+				<float name="Density">0.24</float>
+				<float name="Offset">0.05</float>
+				<float name="Haze">0.7</float>
+				<Color3 name="Color"><R>0.4706</R><G>0.3922</G><B>0.6275</B></Color3>
+				<Color3 name="Decay"><R>0.2353</R><G>0.1961</G><B>0.3529</B></Color3>
+			</Properties>
+		</Item>
+		<Item class="BloomEffect" referent="RBX00000005">
+			<Properties>
+				<string name="Name">IC_Bloom</string>
+				<float name="Intensity">0.4</float>
+				<float name="Size">22</float>
+				<float name="Threshold">1.6</float>
+			</Properties>
+		</Item>
+		<Item class="ColorCorrectionEffect" referent="RBX00000006">
+			<Properties>
+				<string name="Name">IC_Color</string>
+				<float name="Contrast">0.04</float>
+				<float name="Saturation">0.06</float>
+			</Properties>
+		</Item>
+		<Item class="SunRaysEffect" referent="RBX00000007">
+			<Properties>
+				<string name="Name">IC_SunRays</string>
+				<float name="Intensity">0</float>
+			</Properties>
+		</Item>
+		<Item class="DepthOfFieldEffect" referent="RBX00000008">
+			<Properties>
+				<string name="Name">IC_DOF</string>
+				<float name="FarIntensity">0.12</float>
+				<float name="NearIntensity">0</float>
+				<float name="FocusDistance">20</float>
+				<float name="InFocusRadius">22</float>
+			</Properties>
+		</Item>
+	</Item>
+	<Item class="ReplicatedStorage" referent="RBX00000009">
+		<Properties>
+			<string name="Name">ReplicatedStorage</string>
+		</Properties>
+		<Item class="Folder" referent="RBX0000000A">
+			<Properties>
+				<string name="Name">Shared</string>
+			</Properties>
+			<Item class="ModuleScript" referent="RBX0000000B">
+				<Properties>
+					<string name="Name">Config</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ReplicatedStorage/Shared/Config.lua}}]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX0000000C">
+				<Properties>
+					<string name="Name">Moves</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ReplicatedStorage/Shared/Moves.lua}}]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX0000000D">
+				<Properties>
+					<string name="Name">Motor</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ReplicatedStorage/Shared/Motor.lua}}]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX0000000E">
+				<Properties>
+					<string name="Name">Rig</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ReplicatedStorage/Shared/Rig.lua}}]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX0000000F">
+				<Properties>
+					<string name="Name">Poses</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ReplicatedStorage/Shared/Poses.lua}}]]></ProtectedString>
+				</Properties>
+			</Item>
+			<Item class="ModuleScript" referent="RBX00000010">
+				<Properties>
+					<string name="Name">FighterModels</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ReplicatedStorage/Shared/FighterModels.lua}}]]></ProtectedString>
+				</Properties>
+			</Item>
+		</Item>
+	</Item>
+	<Item class="ServerScriptService" referent="RBX00000011">
+		<Properties>
+			<string name="Name">ServerScriptService</string>
+		</Properties>
+		<Item class="Script" referent="RBX00000012">
+			<Properties>
+				<string name="Name">IronClashServer</string>
+				<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer.server.lua}}]]></ProtectedString>
+			</Properties>
+			<Item class="Folder" referent="RBX00000013">
+				<Properties>
+					<string name="Name">Modules</string>
+				</Properties>
+				<Item class="ModuleScript" referent="RBX00000014">
+					<Properties>
+						<string name="Name">Combat</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer/Modules/Combat.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000015">
+					<Properties>
+						<string name="Name">BotAI</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer/Modules/BotAI.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000016">
+					<Properties>
+						<string name="Name">Fighters</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer/Modules/Fighters.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000017">
+					<Properties>
+						<string name="Name">Stats</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer/Modules/Stats.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000018">
+					<Properties>
+						<string name="Name">Arenas</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer/Modules/Arenas.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000019">
+					<Properties>
+						<string name="Name">MatchService</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/IronClashServer/Modules/MatchService.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+		<Item class="Script" referent="RBX0000001A">
+			<Properties>
+				<string name="Name">README</string>
+				<bool name="Disabled">true</bool>
+				<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/ServerScriptService/README.server.lua}}]]></ProtectedString>
+			</Properties>
+		</Item>
+	</Item>
+	<Item class="StarterPlayer" referent="RBX0000001B">
+		<Properties>
+			<string name="Name">StarterPlayer</string>
+		</Properties>
+		<Item class="StarterPlayerScripts" referent="RBX0000001C">
+			<Properties>
+				<string name="Name">StarterPlayerScripts</string>
+			</Properties>
+			<Item class="LocalScript" referent="RBX0000001D">
+				<Properties>
+					<string name="Name">IronClashClient</string>
+					<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient.client.lua}}]]></ProtectedString>
+				</Properties>
+				<Item class="ModuleScript" referent="RBX0000001E">
+					<Properties>
+						<string name="Name">UI</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/UI.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX0000001F">
+					<Properties>
+						<string name="Name">Input</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Input.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000020">
+					<Properties>
+						<string name="Name">CameraRig</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/CameraRig.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000021">
+					<Properties>
+						<string name="Name">Animator</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Animator.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000022">
+					<Properties>
+						<string name="Name">Effects</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Effects.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000023">
+					<Properties>
+						<string name="Name">Themes</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Themes.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000024">
+					<Properties>
+						<string name="Name">Sound</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Sound.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000025">
+					<Properties>
+						<string name="Name">Preview</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Preview.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000026">
+					<Properties>
+						<string name="Name">HUD</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/HUD.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000027">
+					<Properties>
+						<string name="Name">Menu</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Menu.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX00000028">
+					<Properties>
+						<string name="Name">Touch</string>
+						<ProtectedString name="Source"><![CDATA[{{SCRIPT:src/StarterPlayer/StarterPlayerScripts/IronClashClient/Touch.lua}}]]></ProtectedString>
+					</Properties>
+				</Item>
+			</Item>
+		</Item>
+		<Item class="StarterCharacterScripts" referent="RBX00000029">
+			<Properties>
+				<string name="Name">StarterCharacterScripts</string>
+			</Properties>
+		</Item>
+	</Item>
+	<Item class="Players" referent="RBX0000002A">
+		<Properties>
+			<string name="Name">Players</string>
+			<bool name="CharacterAutoLoads">false</bool>
+		</Properties>
+	</Item>
+	<Item class="StarterGui" referent="RBX0000002B">
+		<Properties>
+			<string name="Name">StarterGui</string>
+		</Properties>
+	</Item>
+	<Item class="SoundService" referent="RBX0000002C">
+		<Properties>
+			<string name="Name">SoundService</string>
+		</Properties>
+	</Item>
+</roblox>
