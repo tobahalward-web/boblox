@@ -2970,8 +2970,8 @@ local function face(head, look)
 	local dark = C(28, 22, 32)
 	if look.face == "visor" then
 		local glow = look.glow
-		ell(head, V(0.86, 0.17, 0.12), V(0, 0.04, -0.455), glow, M.Neon, { noShadow = true })
-		ell(head, V(0.9, 0.25, 0.1), V(0, 0.04, -0.435), C(20, 20, 26), SP)
+		ell(head, V(0.84, 0.045, 0.12), V(0, 0.05, -0.462), glow, M.Neon, { noShadow = true })
+		ell(head, V(0.92, 0.3, 0.1), V(0, 0.04, -0.435), C(18, 18, 24), M.Fabric) -- blindfold
 		for _, sx in ipairs({ -1, 1 }) do
 			ell(head, V(0.06, 0.12, 0.46), V(0.45 * sx, 0.05, -0.2), C(20, 20, 26), M.Metal)
 		end
@@ -3033,6 +3033,15 @@ local function hairCap(head, color, size, offset)
 	return ell(head, size, offset, color, SP)
 end
 
+-- long front locks that fall between the eyes and sway (secondary motion) - the classic anime fringe
+local function bangs(head, look, xs, len)
+	for i, x in ipairs(xs) do
+		chain(head, "Bang" .. i, V(x, 0.4, -0.37), { V(x * 0.5, -1, -0.28), V(x * 0.3, -1, -0.1) }, { len * 0.55, len * 0.45 }, function(bone, n, s0, e0)
+			strand(bone, s0, e0, 0.16 - 0.05 * n, 0.1, look.hair)
+		end, { stiff = 110, drag = 11, limit = 50 })
+	end
+end
+
 local HAIR = {}
 
 HAIR.spiky = function(head, look)
@@ -3054,6 +3063,7 @@ HAIR.spiky = function(head, look)
 	if look.accent then
 		spike(head, V(0.2, 0.45, -0.25), V(0.5, -0.7, -0.4), 0.5, 0.24, look.accent, 0)
 	end
+	bangs(head, look, { -0.2, 0.05, 0.3 }, 0.62)
 end
 
 HAIR.ponytail = function(head, look)
@@ -3070,6 +3080,10 @@ HAIR.ponytail = function(head, look)
 		spike(head, V(x, 0.42, -0.3), V(0.35, -0.6, -0.5), 0.42 + i * 0.03, 0.28, c, 0)
 	end
 	vcyl(head, 0.14, 0.3, V(0, 0.5, 0.36), look.trim, SP)
+	for _, sx in ipairs({ -1, 1 }) do -- ribbon bow
+		ell(head, V(0.34, 0.2, 0.12), V(0.17 * sx, 0.54, 0.4), look.trim, M.Fabric, nil, CFrame.Angles(0, 0, rad(-25 * sx)))
+	end
+	bangs(head, look, { -0.15, 0.12 }, 0.5)
 	-- the ponytail: arcs back from the tie, then hangs
 	local dirs = { V(0, -0.15, 1), V(0, -0.55, 0.85), V(0, -1, 0.4), V(0, -1, 0.1) }
 	local widths = { 0.4, 0.36, 0.3, 0.2 }
@@ -3108,6 +3122,7 @@ HAIR.slick = function(head, look)
 		spike(head, d * 0.32 + V(0, 0.16, 0.05), d, sp[2], 0.38, col, rad((i % 2) * 180))
 	end
 	spike(head, V(0.18, 0.42, -0.3), V(0.35, -0.8, -0.35), 0.62, 0.26, look.accent or c, 0)
+	bangs(head, look, { -0.25, 0.0 }, 0.7)
 end
 
 HAIR.messy = function(head, look)
@@ -3129,14 +3144,20 @@ HAIR.messy = function(head, look)
 	for _, x in ipairs({ -0.28, -0.08, 0.12, 0.3 }) do
 		spike(head, V(x, 0.42, -0.3), V(-x * 0.5, -0.6, -0.5), 0.4, 0.28, c, 0)
 	end
-	-- headband with two tails that flutter
-	vcyl(head, 0.2, 1.0, V(0, 0.28, 0), look.trim, SP)
+	-- adventurer goggles pushed up on the forehead, strap and a pair of tinted lenses
+	vcyl(head, 0.2, 1.0, V(0, 0.3, 0), look.trim, M.Fabric)
+	for _, sx in ipairs({ -1, 1 }) do
+		local lc = onHead(head, V(0.3 * sx, 0.55, -0.78), 0.02)
+		vis(head, "ellipsoid", V(0.3, 0.3, 0.1), lc, C(40, 42, 50), M.Metal)
+		vis(head, "ellipsoid", V(0.22, 0.22, 0.08), lc * CFrame.new(0, 0, -0.03), look.glow, M.Neon, { noShadow = true })
+	end
 	for _, sx in ipairs({ -1, 1 }) do
 		chain(head, "Band" .. (sx < 0 and "L" or "R"), V(0.12 * sx, 0.28, 0.47), { V(0.35 * sx, -0.3, 1), V(0.2 * sx, -1, 0.4) }, { 0.36, 0.34 },
-			function(bone, i, s, e)
-				strand(bone, s, e, 0.17, 0.05, look.trim, M.Fabric)
+			function(bone, i, s0, e0)
+				strand(bone, s0, e0, 0.17, 0.05, look.trim, M.Fabric)
 			end, { stiff = 90, drag = 10, limit = 60 })
 	end
+	bangs(head, look, { -0.28, 0.2 }, 0.45)
 end
 
 HAIR.helmet = function(head, look)
@@ -3343,6 +3364,13 @@ local function torso(B, look)
 				end, { stiff = 40, drag = 6.5, grav = 1.1, limit = 65 })
 		end
 	end
+	if look.emblem then
+		-- clan crest: a disc on the chest and a large one across the back
+		ell(ut, V(0.24, 0.24, 0.05), V(-0.36 * kx, 0.42, -0.45 * k), look.emblem, SP, { noShadow = true })
+		ell(ut, V(0.66, 0.66, 0.06), V(0, 0.08, 0.44 * k), look.emblem, SP, { noShadow = true })
+		ell(ut, V(0.44, 0.44, 0.07), V(0, 0.08, 0.455 * k), look.top, SP, { noShadow = true })
+		ell(ut, V(0.2, 0.2, 0.08), V(0, 0.08, 0.47 * k), look.emblem, SP, { noShadow = true })
+	end
 	-- hips + belt
 	loft(lt, { { 0.3, 0.44 * kx, 0.29 * k }, { 0.12, 0.55 * kx, 0.35 * k }, { -0.1, 0.56 * kx, 0.36 * k }, { -0.3, 0.46 * kx, 0.31 * k } }, look.pants, M.Fabric)
 	band(lt, 0.19, 0.53 * kx, 0.35 * k, 0.17, look.belt, look.beltMat or M.Fabric)
@@ -3374,10 +3402,10 @@ local ROSTER = {
 		id = "KAI", name = "KAI", title = "THE STORM FIST",
 		bio = "Balanced striker with a lightning temper.",
 		palettes = {
-			{ skin = C(236, 192, 160), hair = C(28, 128, 140), eye = C(40, 200, 210), top = C(26, 26, 32), trim = C(40, 190, 200),
-				pants = C(56, 58, 66), belt = C(240, 240, 236), shoes = C(28, 28, 32), wraps = C(40, 170, 180), glow = C(60, 220, 230), accent = C(120, 240, 245) },
-			{ skin = C(236, 192, 160), hair = C(180, 40, 50), eye = C(255, 90, 90), top = C(240, 236, 228), trim = C(200, 40, 50),
-				pants = C(36, 36, 44), belt = C(30, 30, 34), shoes = C(30, 30, 34), wraps = C(200, 50, 60), glow = C(255, 80, 80), accent = C(255, 150, 150) },
+			{ skin = C(236, 192, 160), hair = C(28, 128, 140), eye = C(40, 200, 210), top = C(236, 238, 244), trim = C(40, 190, 200),
+				pants = C(36, 52, 92), belt = C(26, 26, 32), shoes = C(30, 30, 36), wraps = C(40, 170, 180), glow = C(60, 220, 230), accent = C(120, 240, 245), emblem = C(40, 190, 200) },
+			{ skin = C(236, 192, 160), hair = C(30, 30, 36), eye = C(255, 150, 60), top = C(244, 132, 36), trim = C(30, 70, 150),
+				pants = C(244, 132, 36), belt = C(30, 70, 150), shoes = C(30, 70, 150), wraps = C(30, 70, 150), glow = C(255, 170, 70), accent = C(60, 60, 70), emblem = C(244, 244, 248) },
 		},
 		style = { hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", scar = true },
 	},
@@ -3386,7 +3414,7 @@ local ROSTER = {
 		bio = "Fast, precise and impossible to pin down.",
 		palettes = {
 			{ skin = C(244, 208, 184), hair = C(206, 196, 236), eye = C(150, 110, 230), top = C(30, 40, 84), trim = C(232, 190, 80),
-				inner = C(244, 244, 248), inner2 = C(244, 244, 248), pants = C(240, 240, 246), shoes = C(30, 40, 84), belt = C(232, 190, 80),
+				inner = C(244, 244, 248), inner2 = C(244, 244, 248), pants = C(240, 240, 246), shoes = C(30, 40, 84), belt = C(232, 190, 80), emblem = C(232, 190, 80),
 				bracer = C(220, 180, 80), glow = C(255, 210, 110), scarf = C(190, 40, 60) },
 			{ skin = C(244, 208, 184), hair = C(30, 30, 40), eye = C(220, 60, 90), top = C(150, 26, 44), trim = C(240, 240, 240),
 				inner = C(30, 30, 36), inner2 = C(30, 30, 36), pants = C(36, 36, 44), shoes = C(150, 26, 44), belt = C(240, 240, 240),
