@@ -337,6 +337,20 @@ local function face(head, look)
 		vis(head, "ellipsoid", V(0.2, 0.03, 0.05), mcf * CFrame.new(0, 0.012, 0) * CFrame.Angles(0, 0, rad(sm)), lipCol, SP, { noShadow = true })
 		vis(head, "ellipsoid", V(0.16, 0.04, 0.05), mcf * CFrame.new(0, -0.03, 0.004) * CFrame.Angles(0, 0, rad(sm)), lipCol, SP, { noShadow = true })
 		vis(head, "ellipsoid", V(0.19, 0.012, 0.05), mcf * CFrame.new(0, -0.003, -0.004) * CFrame.Angles(0, 0, rad(sm)), C(70, 30, 34), SP, { noShadow = true })
+		if look.whiskers then
+			for _, sx in ipairs({ -1, 1 }) do
+				for i = -1, 1 do
+					vis(head, "ellipsoid", V(0.2, 0.022, 0.05), onHead(head, V(0.5 * sx, -0.12 + i * 0.07, -0.78)) * CFrame.Angles(0, 0, rad(i * 12 * sx)), look.markings or dark, SP, { noShadow = true })
+				end
+			end
+		elseif look.markings then
+			for _, sx in ipairs({ -1, 1 }) do
+				-- tapered stripes under the eyes and across the brow
+				vis(head, "ellipsoid", V(0.2, 0.028, 0.05), onHead(head, V(0.3 * sx, -0.08, -0.93)) * CFrame.Angles(0, 0, rad(-8 * sx)), look.markings, SP, { noShadow = true })
+				vis(head, "ellipsoid", V(0.18, 0.026, 0.05), onHead(head, V(0.42 * sx, -0.16, -0.87)) * CFrame.Angles(0, 0, rad(-12 * sx)), look.markings, SP, { noShadow = true })
+				vis(head, "ellipsoid", V(0.24, 0.03, 0.05), onHead(head, V(0.3 * sx, 0.42, -0.85)) * CFrame.Angles(0, 0, rad(-10 * sx)), look.markings, SP, { noShadow = true })
+			end
+		end
 		if look.beard then
 			ell(head, V(0.56, 0.3, 0.34), V(0, -0.38, -0.3), look.hair, SP)
 			ell(head, V(0.3, 0.1, 0.16), V(0, -0.22, -0.46), look.hair, SP) -- moustache
@@ -469,6 +483,7 @@ HAIR.messy = function(head, look)
 	for _, x in ipairs({ -0.28, -0.08, 0.12, 0.3 }) do
 		spike(head, V(x, 0.42, -0.3), V(-x * 0.5, -0.6, -0.5), 0.4, 0.28, c, 0)
 	end
+	if look.goggles then
 	-- adventurer goggles pushed up on the forehead, strap and a pair of tinted lenses
 	vcyl(head, 0.2, 1.0, V(0, 0.3, 0), look.trim, M.Fabric)
 	for _, sx in ipairs({ -1, 1 }) do
@@ -481,6 +496,7 @@ HAIR.messy = function(head, look)
 			function(bone, i, s0, e0)
 				strand(bone, s0, e0, 0.17, 0.05, look.trim, M.Fabric)
 			end, { stiff = 90, drag = 10, limit = 60 })
+	end
 	end
 	bangs(head, look, { -0.28, 0.2 }, 0.45)
 end
@@ -689,6 +705,30 @@ local function torso(B, look)
 				end, { stiff = 40, drag = 6.5, grav = 1.1, limit = 65 })
 		end
 	end
+	if look.harness then
+		-- crossed leather straps with buckles over the chest and a thigh-strap belt
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(ut, V(0.1, 1.1, 0.05), V(0.04 * sx * kx, 0.18, -0.45 * k), look.harness, M.Leather, { noShadow = true }, CFrame.Angles(0, 0, rad(-34 * sx)))
+		end
+		ell(ut, V(0.16, 0.16, 0.07), V(0, 0.2, -0.47 * k), C(190, 190, 196), M.Metal)
+		band(ut, -0.5, 0.5 * kx, 0.34 * k, 0.1, look.harness, M.Leather)
+	end
+	if look.cape then
+		-- a long cloak streaming behind the shoulders
+		for _, sx in ipairs({ -1, 1 }) do
+			chain(ut, "Cape" .. (sx < 0 and "L" or "R"), V(0.28 * sx, 0.55, 0.38 * k), { V(0.04 * sx, -1, 0.35), V(0.03 * sx, -1, 0.4), V(0.02 * sx, -1, 0.35) }, { 0.6, 0.6, 0.55 },
+				function(bone, i, s0, e0)
+					strand(bone, s0, e0, 0.62 - 0.03 * i, 0.07, look.cape, M.Fabric)
+				end, { stiff = 28, drag = 6, grav = 1.3, limit = 70 })
+		end
+		ell(ut, V(1.2 * kx, 0.16, 0.2), V(0, 0.62, 0.4 * k), look.cape, M.Fabric)
+	end
+	if look.tattoo then
+		-- bold black bands across the chest and abdomen
+		for n = 0, 2 do
+			ell(ut, V(0.88 * kx, 0.05, 0.1), V(0, 0.4 - n * 0.28, -0.4 * k), look.tattoo, SP, { noShadow = true })
+		end
+	end
 	if look.emblem then
 		-- clan crest: a disc on the chest and a large one across the back
 		ell(ut, V(0.24, 0.24, 0.05), V(-0.36 * kx, 0.42, -0.45 * k), look.emblem, SP, { noShadow = true })
@@ -724,15 +764,17 @@ end
 ------------------------------------------------------------------------------------------
 local ROSTER = {
 	{
-		id = "KAI", name = "KAI", title = "THE STORM FIST",
-		bio = "Balanced striker with a lightning temper.",
+		id = "KAI", name = "KAI", title = "THE ORANGE STORM",
+		bio = "A loud, never-quit ninja with a forehead protector and a fox's grin.",
 		palettes = {
-			{ skin = C(236, 192, 160), hair = C(28, 128, 140), eye = C(40, 200, 210), top = C(236, 238, 244), trim = C(40, 190, 200),
-				pants = C(36, 52, 92), belt = C(26, 26, 32), shoes = C(30, 30, 36), wraps = C(40, 170, 180), glow = C(60, 220, 230), accent = C(120, 240, 245), emblem = C(40, 190, 200) },
-			{ skin = C(236, 192, 160), hair = C(30, 30, 36), eye = C(255, 150, 60), top = C(244, 132, 36), trim = C(30, 70, 150),
-				pants = C(244, 132, 36), belt = C(30, 70, 150), shoes = C(30, 70, 150), wraps = C(30, 70, 150), glow = C(255, 170, 70), accent = C(60, 60, 70), emblem = C(244, 244, 248) },
+			{ skin = C(240, 200, 168), hair = C(250, 214, 60), eye = C(70, 150, 240), top = C(246, 128, 32), trim = C(28, 34, 60),
+				inner = C(28, 34, 60), inner2 = C(28, 34, 60), pants = C(246, 128, 32), belt = C(28, 34, 60), shoes = C(28, 34, 60),
+				wraps = C(236, 236, 240), glow = C(255, 170, 60), headband = C(36, 60, 150), markings = C(70, 44, 30), scarf = nil },
+			{ skin = C(240, 200, 168), hair = C(40, 30, 28), eye = C(220, 60, 60), top = C(36, 40, 56), trim = C(220, 60, 60),
+				inner = C(60, 60, 76), inner2 = C(60, 60, 76), pants = C(36, 40, 56), belt = C(220, 60, 60), shoes = C(36, 40, 56),
+				wraps = C(200, 200, 210), glow = C(255, 100, 100), headband = C(200, 40, 50), markings = C(70, 44, 30) },
 		},
-		style = { hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", scar = true },
+		style = { hairStyle = "spiky", jacket = "crop", sleeves = "long", pantsStyle = "gi", brows = "angry", smirk = 10, whiskers = true, bulk = 1.0 },
 	},
 	{
 		id = "AYAME", name = "AYAME", title = "SILVER CRANE",
@@ -748,23 +790,23 @@ local ROSTER = {
 		style = { hairStyle = "ponytail", jacket = "crop", sleeves = "short", brows = "calm", bulk = 0.92, smirk = -3 },
 	},
 	{
-		id = "RYOJI", name = "RYOJI", title = "MOUNTAIN BREAKER",
-		bio = "Hits like a landslide. Slow to anger, slower to fall.",
+		id = "RYOJI", name = "RYOJI", title = "THE CURSED KING",
+		bio = "A smiling tyrant with pink hair and black markings who treats every fight as a feast.",
 		palettes = {
-			{ skin = C(196, 140, 104), hair = C(60, 40, 30), eye = C(110, 70, 40), top = C(46, 92, 54), trim = C(220, 180, 90),
-				inner2 = C(196, 140, 104), pants = C(30, 30, 34), belt = C(170, 170, 180), beltMat = M.Metal, shoes = C(60, 44, 36),
-				wraps = C(230, 226, 214), glow = C(255, 150, 60) },
-			{ skin = C(160, 110, 80), hair = C(220, 220, 225), eye = C(90, 140, 200), top = C(90, 40, 30), trim = C(240, 200, 120),
-				inner2 = C(160, 110, 80), pants = C(54, 44, 40), belt = C(200, 170, 90), beltMat = M.Metal, shoes = C(40, 34, 30),
-				wraps = C(40, 40, 46), glow = C(255, 200, 90) },
+			{ skin = C(232, 188, 156), hair = C(246, 150, 170), eye = C(200, 40, 50), top = C(232, 188, 156), trim = C(240, 240, 236),
+				inner2 = C(232, 188, 156), pants = C(34, 32, 40), belt = C(240, 240, 236), shoes = C(30, 28, 34), wraps = C(40, 36, 44),
+				glow = C(255, 70, 90), markings = C(30, 22, 30), tattoo = C(30, 22, 30) },
+			{ skin = C(214, 168, 140), hair = C(40, 36, 46), eye = C(255, 190, 60), top = C(214, 168, 140), trim = C(190, 40, 50),
+				inner2 = C(214, 168, 140), pants = C(70, 20, 28), belt = C(190, 40, 50), shoes = C(30, 28, 34), wraps = C(30, 28, 34),
+				glow = C(255, 190, 60), markings = C(30, 22, 30), tattoo = C(30, 22, 30) },
 		},
-		style = { hairStyle = "topknot", jacket = "vest", sleeves = "none", brows = "angry", bulk = 1.28, beard = true },
+		style = { hairStyle = "spiky", jacket = "vest", sleeves = "none", pantsStyle = "gi", brows = "angry", bulk = 1.2, smirk = 12 },
 	},
 	{
 		id = "VEX", name = "VEX", title = "NEON PHANTOM",
 		bio = "Cold, flashy, and always three moves ahead.",
 		palettes = {
-			{ skin = C(232, 200, 180), hair = C(232, 232, 242), accent = C(80, 220, 255), eye = C(80, 220, 255), top = C(54, 30, 78), trim = C(34, 30, 44),
+			{ skin = C(232, 200, 180), hair = C(232, 232, 242), accent = C(80, 220, 255), eye = C(80, 220, 255), top = C(26, 30, 52), trim = C(34, 30, 44),
 				pants = C(24, 24, 30), belt = C(20, 20, 24), shoes = C(20, 20, 24), glove = C(24, 24, 28), glow = C(80, 220, 255) },
 			{ skin = C(232, 200, 180), hair = C(40, 40, 50), accent = C(255, 90, 160), eye = C(255, 90, 160), top = C(230, 230, 236), trim = C(60, 60, 70),
 				pants = C(40, 40, 48), belt = C(30, 30, 34), shoes = C(240, 240, 244), glove = C(240, 240, 244), glow = C(255, 90, 170) },
@@ -772,28 +814,30 @@ local ROSTER = {
 		style = { hairStyle = "slick", jacket = "coat", sleeves = "long", face = "visor", brows = "calm", glowGloves = true },
 	},
 	{
-		id = "NOVA", name = "NOVA", title = "SPARK RUNNER",
-		bio = "Pure speed and attitude. Never stops moving.",
+		id = "NOVA", name = "NOVA", title = "THE SKY WARRIOR",
+		bio = "A cheerful powerhouse in a battle gi who gets stronger the harder you hit him.",
 		palettes = {
-			{ skin = C(240, 200, 170), hair = C(150, 226, 60), eye = C(240, 170, 40), top = C(244, 244, 246), trim = C(150, 226, 60),
-				inner = C(30, 30, 36), inner2 = C(240, 200, 170), pants = C(28, 28, 32), legs = C(90, 92, 104), belt = C(150, 226, 60),
-				shoes = C(244, 244, 246), sole = C(150, 226, 60), glove = C(150, 226, 60), glow = C(170, 255, 80) },
-			{ skin = C(240, 200, 170), hair = C(255, 140, 40), eye = C(60, 140, 255), top = C(30, 40, 60), trim = C(255, 140, 40),
-				inner = C(240, 240, 240), inner2 = C(240, 200, 170), pants = C(240, 240, 240), legs = C(30, 34, 46), belt = C(255, 140, 40),
-				shoes = C(30, 40, 60), sole = C(255, 140, 40), glove = C(255, 140, 40), glow = C(255, 170, 70) },
+			{ skin = C(238, 198, 164), hair = C(22, 22, 28), eye = C(40, 40, 52), top = C(248, 132, 30), trim = C(30, 80, 170),
+				inner2 = C(30, 80, 170), pants = C(248, 132, 30), belt = C(30, 80, 170), shoes = C(30, 80, 170), wraps = C(30, 80, 170),
+				glow = C(120, 200, 255), accent = nil },
+			{ skin = C(238, 198, 164), hair = C(255, 230, 90), eye = C(60, 220, 190), top = C(250, 250, 252), trim = C(30, 170, 190),
+				inner2 = C(30, 170, 190), pants = C(250, 250, 252), belt = C(30, 170, 190), shoes = C(30, 170, 190), wraps = C(30, 170, 190),
+				glow = C(120, 255, 240) },
 		},
-		style = { hairStyle = "messy", jacket = "crop", sleeves = "long", pantsStyle = "shorts", brows = "angry", bulk = 0.95, smirk = 10 },
+		style = { hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 8, bulk = 1.08 },
 	},
 	{
-		id = "GOR", name = "GOR", title = "IRON WARDEN",
-		bio = "An armoured wall that walks forward and never blinks.",
+		id = "GOR", name = "GOR", title = "THE SCOUT",
+		bio = "A furious young soldier in a green cloak, strapped into his gear and out for blood.",
 		palettes = {
-			{ skin = C(80, 84, 92), hair = C(80, 84, 92), eye = C(255, 120, 40), top = C(70, 74, 84), trim = C(110, 116, 128),
-				pants = C(50, 52, 60), belt = C(40, 40, 46), beltMat = M.Metal, shoes = C(60, 62, 70), glow = C(255, 120, 40) },
-			{ skin = C(70, 50, 40), hair = C(70, 50, 40), eye = C(80, 255, 140), top = C(40, 60, 50), trim = C(150, 130, 80),
-				pants = C(36, 46, 40), belt = C(30, 34, 30), beltMat = M.Metal, shoes = C(50, 54, 48), glow = C(90, 255, 150) },
+			{ skin = C(236, 196, 164), hair = C(84, 58, 40), eye = C(50, 190, 130), top = C(238, 236, 228), trim = C(196, 170, 100),
+				inner = C(238, 236, 228), inner2 = C(238, 236, 228), pants = C(236, 234, 226), belt = C(96, 66, 44), shoes = C(70, 48, 34),
+				glow = C(80, 255, 170), cape = C(52, 100, 66), harness = C(96, 66, 44) },
+			{ skin = C(236, 196, 164), hair = C(30, 26, 30), eye = C(230, 70, 60), top = C(60, 62, 74), trim = C(190, 190, 200),
+				inner = C(60, 62, 74), inner2 = C(60, 62, 74), pants = C(60, 62, 74), belt = C(40, 40, 46), shoes = C(30, 30, 36),
+				glow = C(255, 100, 90), cape = C(130, 36, 44), harness = C(40, 40, 46) },
 		},
-		style = { hairStyle = "helmet", face = "helmet", jacket = "armor", sleeves = "long", pauldrons = true, bulk = 1.18 },
+		style = { hairStyle = "messy", jacket = "crop", sleeves = "long", brows = "angry", bulk = 1.05, smirk = -6 },
 	},
 }
 
@@ -881,6 +925,13 @@ function FighterModels.build(id, palette, displayName)
 	face(head, look)
 	local hairFn = HAIR[look.hairStyle] or HAIR.spiky
 	hairFn(head, look)
+	if look.headband then
+		-- forehead protector: cloth band round the brow with a polished plate at the front
+		local band0 = onHead(head, V(0, 0.34, -0.9), 0.0)
+		vcyl(head, 0.2, 1.02, V(0, 0.33, 0), look.headband, M.Fabric)
+		vis(head, "ellipsoid", V(0.52, 0.2, 0.05), band0 * CFrame.new(0, 0, -0.02), C(176, 184, 196), M.Metal, { reflect = 0.2 })
+		vis(head, "ellipsoid", V(0.14, 0.08, 0.05), band0 * CFrame.new(0, 0, -0.04), C(70, 76, 90), M.Metal)
+	end
 
 	torso(B, look)
 	arm(B, "Left", look)

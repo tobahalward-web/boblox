@@ -115,8 +115,8 @@ class Models(unittest.TestCase):
             m = self.FM.build(f.id, 1, f.name)
             life = self.Life.new(m, 3)
             n = len(lua_list(life.lids))
-            if f.id in ("VEX", "GOR"):
-                self.assertEqual(n, 0, f"{f.id} has a visor/helmet, nothing to blink")
+            if f.id == "VEX":
+                self.assertEqual(n, 0, f"{f.id} has a blindfold, nothing to blink")
                 continue
             self.assertEqual(n, 4, f"{f.id}: two eyes x (lid + lash)")
             lids = lua_list(life.lids)
