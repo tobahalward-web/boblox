@@ -94,6 +94,18 @@ def main(src, out):
         parts = [d for d in asset.iter("Item") if d.get("class") in ("Part", "MeshPart", "UnionOperation")]
         print(f"{key:7s} {'R6 ' if r6 else 'R15'} parts={len(parts):3d}  {[name_of(p) for p in parts][:14]}")
     ET.ElementTree(folder).write(out, encoding="utf-8", xml_declaration=False)
+    # Items refer to shared strings (tags, attributes) by md5; their data lives in a <SharedStrings>
+    # section at the end of the file, which must travel with the models or Studio refuses to open the place.
+    needed = {e.text for e in folder.iter("SharedString") if e.text}
+    table = {e.get("md5"): e for e in (root.find("SharedStrings") or [])}
+    missing = needed - set(table)
+    if missing:
+        raise SystemExit(f"shared strings not defined in the source file: {sorted(missing)[:3]}")
+    side = Path(out).with_name("FighterAssets.sharedstrings.xml")
+    with open(side, "w", encoding="utf-8") as f:
+        for md5 in sorted(needed):
+            f.write(ET.tostring(table[md5], encoding="unicode").strip() + "\n")
+    print(f"wrote {side} ({len(needed)} shared strings)")
     print("wrote", out, Path(out).stat().st_size, "bytes")
 
 

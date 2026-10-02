@@ -110,6 +110,14 @@ def main(tree, out):
         _, close_pos, _ = items2["ReplicatedStorage"]
         line_start = text.rfind("\n", 0, close_pos) + 1
         text = text[:line_start] + a_xml + text[line_start:]
+        # the models' shared strings (md5 -> data) go in the file's <SharedStrings> section
+        ss = tree / "assets" / "FighterAssets.sharedstrings.xml"
+        if ss.exists():
+            defs = "".join("\t\t" + ln + "\n" for ln in ss.read_text(encoding="utf-8").splitlines() if ln.strip())
+            if "</SharedStrings>" in text:
+                text = text.replace("</SharedStrings>", defs + "\t</SharedStrings>", 1)
+            else:
+                text = text.replace("</roblox>", "\t<SharedStrings>\n" + defs + "\t</SharedStrings>\n</roblox>", 1)
 
     # ---- existing script bodies --------------------------------------------------------
     def sub(m):
