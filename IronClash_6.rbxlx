@@ -3037,8 +3037,10 @@ local function face(head, look)
 end
 
 -- a blade-like hair spike: widest at the root (hidden in the scalp), tapering to a point at the tip
+local hairScale = 1 -- per-fighter silhouette multiplier, set in build()
 local function spike(head, base, dir, len, thick, color, roll)
 	local d = dir.Unit
+	len = len * hairScale
 	local tip = base + d * len
 	return vis(head, "ellipsoid", V(thick, thick * 0.78, len * 2), head.CFrame * CFrame.lookAt(base, tip) * CFrame.Angles(0, 0, roll or 0), color, SP)
 end
@@ -3380,6 +3382,21 @@ local function torso(B, look)
 				end, { stiff = 40, drag = 6.5, grav = 1.1, limit = 65 })
 		end
 	end
+	if look.scroll then
+		-- a rolled scroll slung across the back with metal end caps
+		local sc = ut.CFrame * CFrame.new(0, 0.05, 0.5 * k) * CFrame.Angles(0, 0, rad(-28))
+		vis(ut, "cyl", V(1.5 * kx, 0.2, 0.2), sc, look.scroll, M.Fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			vis(ut, "cyl", V(0.1, 0.26, 0.26), sc * CFrame.new(0.75 * kx * sx, 0, 0), C(176, 184, 196), M.Metal)
+		end
+	end
+	if look.beads then
+		-- prayer beads draped round the neck
+		for i = 0, 11 do
+			local a = i / 12 * math.pi * 2
+			ell(ut, V(0.1, 0.1, 0.1), V(math.cos(a) * 0.27 * k, 0.62 - (math.sin(a) < 0 and 0.12 * -math.sin(a) or 0), math.sin(a) * 0.27 * k - 0.06), look.beads, SP)
+		end
+	end
 	if look.harness then
 		-- crossed leather straps with buckles over the chest and a thigh-strap belt
 		for _, sx in ipairs({ -1, 1 }) do
@@ -3391,9 +3408,9 @@ local function torso(B, look)
 	if look.cape then
 		-- a long cloak streaming behind the shoulders
 		for _, sx in ipairs({ -1, 1 }) do
-			chain(ut, "Cape" .. (sx < 0 and "L" or "R"), V(0.28 * sx, 0.55, 0.38 * k), { V(0.04 * sx, -1, 0.35), V(0.03 * sx, -1, 0.4), V(0.02 * sx, -1, 0.35) }, { 0.6, 0.6, 0.55 },
+			chain(ut, "Cape" .. (sx < 0 and "L" or "R"), V(0.28 * sx, 0.55, 0.38 * k), { V(0.04 * sx, -1, 0.35), V(0.03 * sx, -1, 0.4), V(0.02 * sx, -1, 0.35), V(0.02 * sx, -1, 0.3) }, { 0.7, 0.7, 0.7, 0.6 },
 				function(bone, i, s0, e0)
-					strand(bone, s0, e0, 0.62 - 0.03 * i, 0.07, look.cape, M.Fabric)
+					strand(bone, s0, e0, 0.66 - 0.03 * i, 0.07, look.cape, M.Fabric)
 				end, { stiff = 28, drag = 6, grav = 1.3, limit = 70 })
 		end
 		ell(ut, V(1.2 * kx, 0.16, 0.2), V(0, 0.62, 0.4 * k), look.cape, M.Fabric)
@@ -3410,6 +3427,16 @@ local function torso(B, look)
 		ell(ut, V(0.66, 0.66, 0.06), V(0, 0.08, 0.44 * k), look.emblem, SP, { noShadow = true })
 		ell(ut, V(0.44, 0.44, 0.07), V(0, 0.08, 0.455 * k), look.top, SP, { noShadow = true })
 		ell(ut, V(0.2, 0.2, 0.08), V(0, 0.08, 0.47 * k), look.emblem, SP, { noShadow = true })
+	end
+	if look.pouch then
+		ell(lt, V(0.34, 0.4, 0.3), V(0.5 * kx, -0.2, 0.18), look.pouch, M.Leather)
+		ell(lt, V(0.36, 0.08, 0.32), V(0.5 * kx, -0.04, 0.18), look.trim, M.Fabric)
+	end
+	if look.hipBlades then
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(lt, V(0.1, 0.62, 0.16), V(0.56 * kx * sx, -0.3, 0.12), look.hipBlades, M.Metal, nil, CFrame.Angles(0, 0, rad(-8 * sx)))
+			ell(lt, V(0.14, 0.14, 0.2), V(0.54 * kx * sx, 0.0, 0.12), look.trim, M.Leather)
+		end
 	end
 	-- hips + belt
 	loft(lt, { { 0.3, 0.44 * kx, 0.29 * k }, { 0.12, 0.55 * kx, 0.35 * k }, { -0.1, 0.56 * kx, 0.36 * k }, { -0.3, 0.46 * kx, 0.31 * k } }, look.pants, M.Fabric)
@@ -3449,7 +3476,7 @@ local ROSTER = {
 				inner = C(60, 60, 76), inner2 = C(60, 60, 76), pants = C(36, 40, 56), belt = C(220, 60, 60), shoes = C(36, 40, 56),
 				wraps = C(200, 200, 210), glow = C(255, 100, 100), headband = C(200, 40, 50), markings = C(70, 44, 30) },
 		},
-		style = { hairStyle = "spiky", jacket = "crop", sleeves = "long", pantsStyle = "gi", brows = "angry", smirk = 10, whiskers = true, bulk = 1.0 },
+		style = { hairScale = 1.3, scroll = C(236, 226, 196), pouch = C(96, 70, 48), auraRate = 12, hairStyle = "spiky", jacket = "crop", sleeves = "long", pantsStyle = "gi", brows = "angry", smirk = 10, whiskers = true, bulk = 1.0 },
 	},
 	{
 		id = "AYAME", name = "AYAME", title = "SILVER CRANE",
@@ -3462,7 +3489,7 @@ local ROSTER = {
 				inner = C(30, 30, 36), inner2 = C(30, 30, 36), pants = C(36, 36, 44), shoes = C(150, 26, 44), belt = C(240, 240, 240),
 				bracer = C(200, 200, 210), glow = C(255, 120, 150), scarf = C(240, 240, 240) },
 		},
-		style = { hairStyle = "ponytail", jacket = "crop", sleeves = "short", brows = "calm", bulk = 0.92, smirk = -3 },
+		style = { hairScale = 1.15, auraRate = 8, hairStyle = "ponytail", jacket = "crop", sleeves = "short", brows = "calm", bulk = 0.92, smirk = -3 },
 	},
 	{
 		id = "RYOJI", name = "RYOJI", title = "THE CURSED KING",
@@ -3475,7 +3502,7 @@ local ROSTER = {
 				inner2 = C(214, 168, 140), pants = C(70, 20, 28), belt = C(190, 40, 50), shoes = C(30, 28, 34), wraps = C(30, 28, 34),
 				glow = C(255, 190, 60), markings = C(30, 22, 30), tattoo = C(30, 22, 30) },
 		},
-		style = { hairStyle = "spiky", jacket = "vest", sleeves = "none", pantsStyle = "gi", brows = "angry", bulk = 1.2, smirk = 12 },
+		style = { hairScale = 1.25, beads = C(236, 232, 224), auraRate = 14, hairStyle = "spiky", jacket = "vest", sleeves = "none", pantsStyle = "gi", brows = "angry", bulk = 1.2, smirk = 12 },
 	},
 	{
 		id = "VEX", name = "VEX", title = "NEON PHANTOM",
@@ -3486,7 +3513,7 @@ local ROSTER = {
 			{ skin = C(232, 200, 180), hair = C(40, 40, 50), accent = C(255, 90, 160), eye = C(255, 90, 160), top = C(230, 230, 236), trim = C(60, 60, 70),
 				pants = C(40, 40, 48), belt = C(30, 30, 34), shoes = C(240, 240, 244), glove = C(240, 240, 244), glow = C(255, 90, 170) },
 		},
-		style = { hairStyle = "slick", jacket = "coat", sleeves = "long", face = "visor", brows = "calm", glowGloves = true },
+		style = { hairScale = 1.3, auraRate = 14, hairStyle = "slick", jacket = "coat", sleeves = "long", face = "visor", brows = "calm", glowGloves = true },
 	},
 	{
 		id = "NOVA", name = "NOVA", title = "THE SKY WARRIOR",
@@ -3499,7 +3526,7 @@ local ROSTER = {
 				inner2 = C(30, 170, 190), pants = C(250, 250, 252), belt = C(30, 170, 190), shoes = C(30, 170, 190), wraps = C(30, 170, 190),
 				glow = C(120, 255, 240) },
 		},
-		style = { hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 8, bulk = 1.08 },
+		style = { hairScale = 1.45, auraRate = 16, hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 8, bulk = 1.08 },
 	},
 	{
 		id = "GOR", name = "GOR", title = "THE SCOUT",
@@ -3512,7 +3539,7 @@ local ROSTER = {
 				inner = C(60, 62, 74), inner2 = C(60, 62, 74), pants = C(60, 62, 74), belt = C(40, 40, 46), shoes = C(30, 30, 36),
 				glow = C(255, 100, 90), cape = C(130, 36, 44), harness = C(40, 40, 46) },
 		},
-		style = { hairStyle = "messy", jacket = "crop", sleeves = "long", brows = "angry", bulk = 1.05, smirk = -6 },
+		style = { hairScale = 1.1, hipBlades = C(196, 204, 214), pouch = C(96, 66, 44), auraRate = 8, hairStyle = "messy", jacket = "crop", sleeves = "long", brows = "angry", bulk = 1.05, smirk = -6 },
 	},
 }
 
@@ -3556,6 +3583,7 @@ function FighterModels.build(id, palette, displayName)
 	local model = Instance.new("Model")
 	model.Name = displayName or def.name
 	building = model
+	hairScale = look.hairScale or 1
 	local B = {}
 	for _, b in ipairs(BONES) do
 		local p = Instance.new("Part")
@@ -3613,6 +3641,33 @@ function FighterModels.build(id, palette, displayName)
 	arm(B, "Right", look)
 	leg(B, "Left", look)
 	leg(B, "Right", look)
+
+	-- signature aura: a soft glow and a trickle of sparks in the fighter's colour
+	local ut = B.UpperTorso
+	local att = Instance.new("Attachment")
+	att.Name = "AuraAttachment"
+	att.Position = V(0, -0.3, 0)
+	att.Parent = ut
+	local light = Instance.new("PointLight")
+	light.Name = "AuraLight"
+	light.Color = look.glow
+	light.Range = 9
+	light.Brightness = 0.7
+	light.Shadows = false
+	light.Parent = ut
+	local em = Instance.new("ParticleEmitter")
+	em.Name = "Aura"
+	em.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	em.Color = ColorSequence.new(look.glow)
+	em.LightEmission = 1
+	em.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) })
+	em.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
+	em.Lifetime = NumberRange.new(0.7, 1.2)
+	em.Rate = look.auraRate or 10
+	em.Speed = NumberRange.new(1.5, 3)
+	em.SpreadAngle = Vector2.new(180, 180)
+	em.Acceleration = V(0, 3, 0)
+	em.Parent = att
 
 	local hum = Instance.new("Humanoid")
 	hum.RigType = Enum.HumanoidRigType.R15
