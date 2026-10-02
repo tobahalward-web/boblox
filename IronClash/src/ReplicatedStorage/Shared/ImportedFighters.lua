@@ -52,52 +52,60 @@ local function strip(model)
 	end
 end
 
--- parts that are not the body itself (hair, hats, armour, extra limbs...) with the body part they ride on
-local function collectExtras(model, bodyNames, hostTable)
-	local body = {}
-	for _, n in ipairs(bodyNames) do
-		body[n] = model:FindFirstChild(n)
+-- the BasePart named `name` among a model's direct children (models can also hold a Model with that name)
+local function findPart(model, name)
+	for _, c in ipairs(model:GetChildren()) do
+		if c.Name == name and c:IsA("BasePart") then
+			return c
+		end
+	end
+	return nil
+end
+
+-- parts that are not the body itself (hair, hats, armour, extra limbs...) with the body part they ride on.
+-- `groupOf` (optional) decides the host by name for parts that are not welded to a body part already.
+local function collectExtras(model, body, hostTable, groupOf)
+	local isBodyPart = {}
+	for _, b in pairs(body) do
+		isBodyPart[b] = true
+	end
+	local names = {}
+	for n in pairs(body) do
+		names[#names + 1] = n
 	end
 	local extras = {}
 	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") and d ~= body[d.Name] and d.Name ~= "HumanoidRootPart" then
-			local isBodyPart = false
-			for _, n in ipairs(bodyNames) do
-				if body[n] == d then
-					isBodyPart = true
+		if d:IsA("BasePart") and not isBodyPart[d] and d.Name ~= "HumanoidRootPart" then
+			local host
+			-- 1. the part was assigned to a body region (fitted bodies)
+			if groupOf and groupOf[d] then
+				host = body[groupOf[d]]
+			end
+			-- 2. already a child of a body part (decorations parented straight to it)
+			if not host and d.Parent and isBodyPart[d.Parent] then
+				host = d.Parent
+			end
+			-- 3. by accessory attachment name
+			if not host then
+				for _, a in ipairs(d:GetChildren()) do
+					if a:IsA("Attachment") and hostTable[a.Name] and body[hostTable[a.Name]] then
+						host = body[hostTable[a.Name]]
+						break
+					end
 				end
 			end
-			if not isBodyPart then
-				local host
-				-- 1. already a child of a body part (decorations parented straight to it)
-				if d.Parent and d.Parent:IsA("BasePart") and body[d.Parent.Name] == d.Parent then
-					host = d.Parent
-				end
-				-- 2. by accessory attachment name
-				if not host then
-					for _, a in ipairs(d:GetChildren()) do
-						if a:IsA("Attachment") and hostTable[a.Name] and body[hostTable[a.Name]] then
-							host = body[hostTable[a.Name]]
-							break
-						end
+			-- 4. nearest body part
+			if not host then
+				local best = math.huge
+				for _, n in ipairs(names) do
+					local dist = (body[n].Position - d.Position).Magnitude
+					if dist < best then
+						best, host = dist, body[n]
 					end
 				end
-				-- 3. nearest body part
-				if not host then
-					local best = math.huge
-					for _, n in ipairs(bodyNames) do
-						local b = body[n]
-						if b then
-							local dist = (b.Position - d.Position).Magnitude
-							if dist < best then
-								best, host = dist, b
-							end
-						end
-					end
-				end
-				if host then
-					extras[#extras + 1] = { part = d, host = host, offset = host.CFrame:ToObjectSpace(d.CFrame) }
-				end
+			end
+			if host then
+				extras[#extras + 1] = { part = d, host = host, offset = host.CFrame:ToObjectSpace(d.CFrame) }
 			end
 		end
 	end
@@ -163,7 +171,7 @@ local function applyBodyColors(model, names)
 		LeftFoot = bc.LeftLegColor3, RightUpperLeg = bc.RightLegColor3, RightLowerLeg = bc.RightLegColor3, RightFoot = bc.RightLegColor3,
 	}
 	for _, n in ipairs(names) do
-		local p = model:FindFirstChild(n)
+		local p = findPart(model, n)
 		if p and p:IsA("Part") and map[n] then
 			p.Color = map[n]
 		end
@@ -189,8 +197,8 @@ end
 local function prepareR6(model)
 	local P = {}
 	for _, n in ipairs(R6_PARTS) do
-		P[n] = model:FindFirstChild(n)
-		if not P[n] or not P[n]:IsA("BasePart") then
+		P[n] = findPart(model, n)
+		if not P[n] then
 			return false, "missing " .. n
 		end
 	end
@@ -203,7 +211,7 @@ local function prepareR6(model)
 		a.Name = "Right Arm"
 		P["Left Arm"], P["Right Arm"] = b, a
 	end
-	local extras = collectExtras(model, R6_PARTS, HOST_R6)
+	local extras = collectExtras(model, P, HOST_R6)
 	applyBodyColors(model, R6_PARTS)
 
 	-- old joints and any leftover constraints go; we make our own
@@ -213,7 +221,7 @@ local function prepareR6(model)
 		end
 	end
 
-	local root = model:FindFirstChild("HumanoidRootPart")
+	local root = findPart(model, "HumanoidRootPart")
 	if not root then
 		root = Instance.new("Part")
 		root.Name = "HumanoidRootPart"
@@ -260,15 +268,161 @@ local function prepareR6(model)
 end
 
 ------------------------------------------------------------------------------------------
+-- fitted R6: models with no usable limbs (everything is loose parts / unions)
+------------------------------------------------------------------------------------------
+-- Every part is sorted into one of six body regions from where it sits, an invisible limb part is
+-- made for each region, and the standard R6 joints are placed at the regions' own pivots. The region
+-- boundaries default to proportions of the model's height and can be tuned per fighter with
+-- `layout = { hip = studs above the floor, neck = studs above the floor, armX = studs from the centre line }`
+-- in its roster entry.
+local function corners(part)
+	local out = {}
+	local h = part.Size / 2
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sy in ipairs({ -1, 1 }) do
+			for _, sz in ipairs({ -1, 1 }) do
+				out[#out + 1] = part.CFrame:PointToWorldSpace(Vector3.new(h.X * sx, h.Y * sy, h.Z * sz))
+			end
+		end
+	end
+	return out
+end
+
+local function bounds(parts)
+	local lo, hi = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+	for _, p in ipairs(parts) do
+		for _, c in ipairs(corners(p)) do
+			lo = Vector3.new(math.min(lo.X, c.X), math.min(lo.Y, c.Y), math.min(lo.Z, c.Z))
+			hi = Vector3.new(math.max(hi.X, c.X), math.max(hi.Y, c.Y), math.max(hi.Z, c.Z))
+		end
+	end
+	return lo, hi
+end
+
+local function prepareFitted(model, def)
+	local all = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
+			all[#all + 1] = d
+		end
+	end
+	if #all < 6 then
+		return false, "too few parts to fit a body"
+	end
+	local lo, hi = bounds(all)
+	local layout = def.layout or {}
+	local H = hi.Y - lo.Y
+	local cx = (lo.X + hi.X) / 2
+	local hipY = lo.Y + (layout.hip or 0.34 * H)
+	local neckY = lo.Y + (layout.neck or 0.62 * H)
+	local armX = layout.armX or 0.16 * H
+
+	local groups = { Head = {}, Torso = {}, ["Left Arm"] = {}, ["Right Arm"] = {}, ["Left Leg"] = {}, ["Right Leg"] = {} }
+	local groupOf = {}
+	for _, part in ipairs(all) do
+		local c = part.Position
+		local dx = c.X - cx
+		local g
+		if c.Y < hipY then
+			g = (dx < 0) and "Left Leg" or "Right Leg"
+		elseif math.abs(dx) >= armX then
+			g = (dx < 0) and "Left Arm" or "Right Arm"
+		elseif c.Y >= neckY then
+			g = "Head"
+		else
+			g = "Torso"
+		end
+		table.insert(groups[g], part)
+		groupOf[part] = g
+	end
+	for name, list in pairs(groups) do
+		if #list == 0 then
+			return false, "no parts in the " .. name .. " region"
+		end
+	end
+
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Motor6D") or d:IsA("Weld") or d:IsA("WeldConstraint") then
+			d:Destroy()
+		end
+	end
+
+	-- one invisible limb part per region, axis-aligned, sized to what it carries
+	local P = {}
+	for name, list in pairs(groups) do
+		local glo, ghi = bounds(list)
+		local limb = Instance.new("Part")
+		limb.Name = name
+		limb.Size = ghi - glo
+		limb.CFrame = CFrame.new((glo + ghi) / 2)
+		limb.Transparency = 1
+		limb.CanCollide = false
+		limb.Anchored = false
+		P[name] = limb
+	end
+	local extras = {}
+	for _, part in ipairs(all) do
+		extras[#extras + 1] = { part = part, host = P[groupOf[part]], offset = P[groupOf[part]].CFrame:ToObjectSpace(part.CFrame) }
+	end
+	for _, limb in pairs(P) do
+		limb.Parent = model
+	end
+
+	local torso = P.Torso
+	local root = findPart(model, "HumanoidRootPart")
+	if not root then
+		root = Instance.new("Part")
+		root.Name = "HumanoidRootPart"
+		root.Parent = model
+	end
+	root.Size = Vector3.new(2, 2, 1)
+	root.Transparency = 1
+	root.CanCollide = false
+	root.Anchored = false
+	root.CFrame = torso.CFrame
+
+	local function pivot(limb, world)
+		return CFrame.new(limb.CFrame:PointToObjectSpace(world))
+	end
+	local r90, l90 = CFrame.Angles(0, math.rad(90), 0), CFrame.Angles(0, math.rad(-90), 0)
+	local function joint(name, host, limb, world, rot)
+		motor(name, host, limb, pivot(host, world) * rot, pivot(limb, world) * rot)
+	end
+	local function top(limb, inset)
+		return Vector3.new(limb.Position.X, limb.Position.Y + limb.Size.Y / 2 - (inset or 0), limb.Position.Z)
+	end
+	motor("RootJoint", root, torso, ROOT_ROT, ROOT_ROT)
+	local headBottom = Vector3.new(P.Head.Position.X, P.Head.Position.Y - P.Head.Size.Y / 2, P.Head.Position.Z)
+	joint("Neck", torso, P.Head, headBottom, ROOT_ROT)
+	joint("Right Shoulder", torso, P["Right Arm"], top(P["Right Arm"], P["Right Arm"].Size.Y * 0.15), r90)
+	joint("Left Shoulder", torso, P["Left Arm"], top(P["Left Arm"], P["Left Arm"].Size.Y * 0.15), l90)
+	joint("Right Hip", torso, P["Right Leg"], top(P["Right Leg"], 0), r90)
+	joint("Left Hip", torso, P["Left Leg"], top(P["Left Leg"], 0), l90)
+
+	attachExtras(extras)
+	removeEmptyContainers(model)
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		hum = Instance.new("Humanoid")
+		hum.Parent = model
+	end
+	hum.RigType = Enum.HumanoidRigType.R6
+	model.PrimaryPart = root
+	return true
+end
+
+------------------------------------------------------------------------------------------
 -- R15
 ------------------------------------------------------------------------------------------
 local function prepareR15(model)
+	local P = {}
 	for _, n in ipairs(R15_PARTS) do
-		if not model:FindFirstChild(n) then
+		P[n] = findPart(model, n)
+		if not P[n] then
 			return false, "missing " .. n
 		end
 	end
-	local extras = collectExtras(model, R15_PARTS, HOST_R15)
+	local extras = collectExtras(model, P, HOST_R15)
 	applyBodyColors(model, R15_PARTS)
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("Weld") and d.Name == "AccessoryWeld" then
@@ -309,10 +463,16 @@ function ImportedFighters.build(def, displayName)
 	model.Name = displayName or def.name
 	strip(model)
 	local ok, why
-	if model:FindFirstChild("UpperTorso") and model:FindFirstChild("LowerTorso") then
+	local hasR6 = true
+	for _, n in ipairs(R6_PARTS) do
+		hasR6 = hasR6 and findPart(model, n) ~= nil
+	end
+	if findPart(model, "UpperTorso") and findPart(model, "LowerTorso") then
 		ok, why = prepareR15(model)
-	else
+	elseif hasR6 then
 		ok, why = prepareR6(model)
+	else
+		ok, why = prepareFitted(model, def)
 	end
 	if not ok then
 		model:Destroy()

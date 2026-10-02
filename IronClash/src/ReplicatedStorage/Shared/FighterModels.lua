@@ -905,7 +905,7 @@ local ROSTER = {
 		style = { hairScale = 1.3, auraRate = 14, hairStyle = "slick", jacket = "coat", sleeves = "long", face = "visor", brows = "calm", glowGloves = true },
 	},
 	{
-		id = "NOVA", asset = "GOKU", name = "NOVA", title = "THE SKY WARRIOR",
+		id = "NOVA", asset = "GOKU", layout = { hip = 2.3, neck = 4.15, armX = 0.95 }, name = "NOVA", title = "THE SKY WARRIOR",
 		bio = "A cheerful powerhouse in a battle gi who gets stronger the harder you hit him.",
 		palettes = {
 			{ skin = C(238, 198, 164), hair = C(22, 22, 28), eye = C(40, 40, 52), top = C(248, 132, 30), trim = C(30, 80, 170),
@@ -918,7 +918,7 @@ local ROSTER = {
 		style = { hairScale = 1.45, auraRate = 16, hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 8, bulk = 1.08 },
 	},
 	{
-		id = "GOR", asset = "LUFFY", name = "GOR", title = "THE SCOUT",
+		id = "GOR", asset = "YUJI", assetFallback = "LUFFY", name = "GOR", title = "THE SCOUT",
 		bio = "A furious young soldier in a green cloak, strapped into his gear and out for blood.",
 		palettes = {
 			{ skin = C(236, 196, 164), hair = C(84, 58, 40), eye = C(50, 190, 130), top = C(238, 236, 228), trim = C(196, 170, 100),
@@ -966,6 +966,9 @@ function FighterModels.build(id, palette, displayName)
 		end)
 		if ok and IF then
 			local m = IF.build(def, displayName)
+			if not m and def.assetFallback then
+				m = IF.build({ id = def.id, asset = def.assetFallback, name = def.name, palettes = def.palettes, layout = def.layout }, displayName)
+			end
 			if m then
 				m:SetAttribute("Palette", palette or 1)
 				return m

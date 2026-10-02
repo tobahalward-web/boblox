@@ -150,6 +150,62 @@ class Imported(unittest.TestCase):
         self.assertGreater(apart, 1.2, "feet should be planted well apart")
         self.assertGreater(abs(L.Z - R.Z), 0.6, "one foot forward, one back")
 
+    def make_loose(self, name):
+        """A body that is only loose parts (no limbs, no joints): legs low, arms out wide, head up high."""
+        CF = self.CF
+        m = self.g.shim.Instance.new("Model", self.folder)
+        m.Name = name
+        def put(n, size, x, y, z=0.0):
+            return self.part(m, n, size, CF.new(30 + x, -10 + y, 5 + z))
+        for sx in (-1, 1):
+            put("leg", (1.1, 1.5, 1.1), 0.5 * sx, 1.45)
+            put("boot", (1.2, 0.9, 1.2), 0.5 * sx, 0.45)
+            put("arm", (1.0, 1.4, 1.0), 1.5 * sx, 2.9)
+            put("pad", (1.3, 1.0, 1.0), 1.4 * sx, 3.8)
+        put("body", (2.0, 2.0, 1.0), 0.0, 3.2)
+        put("belt", (2.2, 0.2, 1.1), 0.0, 2.5)
+        put("face", (1.1, 1.1, 1.1), 0.0, 4.6)
+        put("hair", (2.0, 1.5, 1.5), 0.0, 5.3)
+        return m
+
+    def test_loose_parts_are_fitted_into_a_body(self):
+        self.make_loose("LOOSE")
+        d = self.g.lua.table_from({"id": "L", "asset": "LOOSE", "name": "L", "layout": self.g.lua.table_from({"hip": 2.3, "neck": 4.15, "armX": 0.95}),
+                                   "palettes": self.g.lua.table_from({1: self.g.lua.table_from({"glow": self.g.env.Color3.new(1, 1, 1)})})})
+        m = self.IF.build(d, "Loose")
+        self.assertIsNotNone(m)
+        names = {x.Name for x in lua_list(m.GetDescendants(m)) if x.IsA(x, "Motor6D")}
+        self.assertEqual(names, {"RootJoint", "Neck", "Right Shoulder", "Left Shoulder", "Right Hip", "Left Hip"})
+        self.assertEqual(m.FindFirstChild(m, "hair", True).Parent.Name, "Head")
+        self.assertEqual(m.FindFirstChild(m, "belt", True).Parent.Name, "Torso")
+        info = self.Rig.measure(m)
+        self.assertTrue(info and info.r6)
+        self.assertAlmostEqual(info.hipCenter, 3.2 - 0.0 + 0.0, delta=1.2)
+        # it poses like any other R6 body
+        self.pose_floor(m, "Idle")
+        low, _ = self.pose_floor(m, "Idle")
+        self.assertLess(abs(low), 0.8)
+
+    def test_a_model_named_head_does_not_hide_the_head_part(self):
+        """Some imports hold a Model called 'Head' next to the Part called 'Head'."""
+        CF = self.CF
+        m = self.make_r6("R6DUP")
+        box = self.g.shim.Instance.new("Model", m)
+        box.Name = "Head"
+        deco = self.part(box, "Mask", (1, 1, 1), m.FindFirstChild(m, "Head").CFrame)
+        model = self.IF.build(self.def_for("R6DUP"), "Dup")
+        self.assertIsNotNone(model)
+        mask = model.FindFirstChild(model, "Mask", True)
+        self.assertEqual(mask.Parent.Name, "Head")
+
+    def test_fallback_asset_is_used_when_the_first_is_missing(self):
+        self.make_r6("FALLBACKB")
+        d = self.g.lua.table_from({"id": "F", "asset": "NOPE", "assetFallback": "FALLBACKB", "name": "F",
+                                   "palettes": self.g.lua.table_from({1: self.g.lua.table_from({"glow": self.g.env.Color3.new(1, 1, 1)})})})
+        res = self.IF.build(d, "x")
+        self.assertIsNone(res[0] if isinstance(res, tuple) else res)  # the loader itself only tries one asset...
+        self.assertEqual(self.FM.get("GOR").assetFallback, "LUFFY")  # ...FighterModels.build does the fallback
+
     def test_every_pose_applies_without_error(self):
         m = self.built("R6G")
         info = self.Rig.measure(m)
