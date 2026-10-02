@@ -193,7 +193,7 @@ end
 
 -- neon silhouette afterimages that trail behind big moves
 local GHOST_PARTS = {
-	"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
+	"Head", "Jaw", "UpperTorso", "MidTorso", "LowerTorso", "LeftClavicle", "RightClavicle", "LeftToes", "RightToes", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
 	"RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot",
 }
 

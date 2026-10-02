@@ -1,4 +1,4 @@
--- IRON CLASH :: R15 rig measurement + pose application (procedural animation backend)
+-- IRON CLASH :: skeleton measurement + pose application (procedural animation backend)
 -- Poses are tables of numbers (degrees / studs). Arms, spine and kicking legs use FK;
 -- planted feet use a 2-bone IK solver so stances stay grounded on any avatar size.
 --
@@ -15,7 +15,13 @@ local IDENTITY = CFrame.new()
 
 local JOINTS = {
 	root = { "LowerTorso", "Root" },
-	waist = { "UpperTorso", "Waist" },
+	waist = { "MidTorso", "Waist" }, -- IRON CLASH skeleton; plain R15 avatars fall back to UpperTorso/Waist
+	chest = { "UpperTorso", "Chest" },
+	lcl = { "LeftClavicle", "LeftClavicle" },
+	rcl = { "RightClavicle", "RightClavicle" },
+	jaw = { "Jaw", "Jaw" },
+	lto = { "LeftToes", "LeftToe" },
+	rto = { "RightToes", "RightToe" },
 	neck = { "Head", "Neck" },
 	ls = { "LeftUpperArm", "LeftShoulder" },
 	le = { "LeftLowerArm", "LeftElbow" },
@@ -104,6 +110,16 @@ function Rig.measure(char)
 			local rot = j.C0.Rotation
 			info.r0[key] = rot
 			info.r0i[key] = rot:Inverse()
+		end
+	end
+	if not info.j.waist then
+		-- a standard R15 avatar: one waist joint on UpperTorso
+		local j = findJoint(char, "UpperTorso", "Waist")
+		if j then
+			info.j.waist = j
+			info.m.waist = j.inst
+			info.r0.waist = j.C0.Rotation
+			info.r0i.waist = j.C0.Rotation:Inverse()
 		end
 	end
 	local J = info.j
@@ -228,7 +244,19 @@ function Rig.apply(info, P)
 	local lie = (P.ly or 0) * (info.rootJointH - 0.5 * s)
 	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx), rad(P.ry), rad(P.rz))
 	setJoint(info, "root", rootT)
-	setJoint(info, "waist", fromYXZ(rad(P.wx), rad(P.wy), rad(P.wz)))
+	-- spine: with the custom skeleton the waist bend is shared by the abdomen and the chest joint
+	local share = info.j.chest and 0.45 or 1
+	setJoint(info, "waist", fromYXZ(rad(P.wx * share), rad(P.wy * share), rad(P.wz * share)))
+	setJoint(info, "chest", fromYXZ(rad(P.wx * (1 - share)), rad(P.wy * (1 - share)), rad(P.wz * (1 - share))))
+	-- collarbones lift with the arm (a shrug when the arm goes up or out) and drop with it
+	local function shrug(a, b)
+		local e = math.max(0, a, math.abs(b))
+		return math.clamp(e / 160, 0, 1) * 13
+	end
+	setJoint(info, "lcl", CFrame.Angles(0, 0, rad(-shrug(P.lsx, P.lsz))))
+	setJoint(info, "rcl", CFrame.Angles(0, 0, rad(shrug(P.rsx, P.rsz))))
+	-- jaw hangs open a little whenever the head snaps far from its guard angle (hits, knockdowns)
+	setJoint(info, "jaw", CFrame.Angles(-rad(math.min(24, math.abs(P.nx - 4) * 0.55 + (P.ly or 0) * 12)), 0, 0))
 	setJoint(info, "neck", fromYXZ(rad(P.nx), rad(P.ny), rad(P.nz)))
 	setJoint(info, "ls", fromYXZ(rad(P.lsx), rad(P.lsy), rad(P.lsz)))
 	setJoint(info, "le", CFrame.Angles(rad(P.lex), 0, 0))
@@ -243,9 +271,9 @@ function Rig.apply(info, P)
 
 	local sides = {
 		{ leg = info.L, w = P.lik, fx = P.lfx, fz = P.lfz, fy = P.lfy, fr = P.lfr, fp = P.lfp or 0,
-			hx = P.lhx, hy = P.lhy, hz = P.lhz, kx = P.lkx, ax = P.lax, keys = { "lh", "lk", "la" } },
+			hx = P.lhx, hy = P.lhy, hz = P.lhz, kx = P.lkx, ax = P.lax, keys = { "lh", "lk", "la" }, toe = "lto" },
 		{ leg = info.R, w = P.rik, fx = P.rfx, fz = P.rfz, fy = P.rfy, fr = P.rfr, fp = P.rfp or 0,
-			hx = P.rhx, hy = P.rhy, hz = P.rhz, kx = P.rkx, ax = P.rax, keys = { "rh", "rk", "ra" } },
+			hx = P.rhx, hy = P.rhy, hz = P.rhz, kx = P.rkx, ax = P.rax, keys = { "rh", "rk", "ra" }, toe = "rto" },
 	}
 	local ltRot = ltCF.Rotation
 	for _, sd in ipairs(sides) do
@@ -280,6 +308,9 @@ function Rig.apply(info, P)
 		setJoint(info, sd.keys[1], hipT)
 		setJoint(info, sd.keys[2], kneeT)
 		setJoint(info, sd.keys[3], ankleT)
+		-- toes bend with the foot: heel lifted = ball-of-foot roll, toe pointed = curl
+		local toeDeg = math.clamp(-(sd.fp + sd.ax) * 0.6 + math.max(0, fkAnklePos.Y - minY) * 8, -25, 40)
+		setJoint(info, sd.toe, CFrame.Angles(rad(toeDeg), 0, 0))
 	end
 end
 

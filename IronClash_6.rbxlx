@@ -1222,7 +1222,7 @@ return Motor
 			<Item class="ModuleScript" referent="RBX0000000E">
 				<Properties>
 					<string name="Name">Rig</string>
-					<ProtectedString name="Source"><![CDATA[-- IRON CLASH :: R15 rig measurement + pose application (procedural animation backend)
+					<ProtectedString name="Source"><![CDATA[-- IRON CLASH :: skeleton measurement + pose application (procedural animation backend)
 -- Poses are tables of numbers (degrees / studs). Arms, spine and kicking legs use FK;
 -- planted feet use a 2-bone IK solver so stances stay grounded on any avatar size.
 --
@@ -1239,7 +1239,13 @@ local IDENTITY = CFrame.new()
 
 local JOINTS = {
 	root = { "LowerTorso", "Root" },
-	waist = { "UpperTorso", "Waist" },
+	waist = { "MidTorso", "Waist" }, -- IRON CLASH skeleton; plain R15 avatars fall back to UpperTorso/Waist
+	chest = { "UpperTorso", "Chest" },
+	lcl = { "LeftClavicle", "LeftClavicle" },
+	rcl = { "RightClavicle", "RightClavicle" },
+	jaw = { "Jaw", "Jaw" },
+	lto = { "LeftToes", "LeftToe" },
+	rto = { "RightToes", "RightToe" },
 	neck = { "Head", "Neck" },
 	ls = { "LeftUpperArm", "LeftShoulder" },
 	le = { "LeftLowerArm", "LeftElbow" },
@@ -1328,6 +1334,16 @@ function Rig.measure(char)
 			local rot = j.C0.Rotation
 			info.r0[key] = rot
 			info.r0i[key] = rot:Inverse()
+		end
+	end
+	if not info.j.waist then
+		-- a standard R15 avatar: one waist joint on UpperTorso
+		local j = findJoint(char, "UpperTorso", "Waist")
+		if j then
+			info.j.waist = j
+			info.m.waist = j.inst
+			info.r0.waist = j.C0.Rotation
+			info.r0i.waist = j.C0.Rotation:Inverse()
 		end
 	end
 	local J = info.j
@@ -1452,7 +1468,19 @@ function Rig.apply(info, P)
 	local lie = (P.ly or 0) * (info.rootJointH - 0.5 * s)
 	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx), rad(P.ry), rad(P.rz))
 	setJoint(info, "root", rootT)
-	setJoint(info, "waist", fromYXZ(rad(P.wx), rad(P.wy), rad(P.wz)))
+	-- spine: with the custom skeleton the waist bend is shared by the abdomen and the chest joint
+	local share = info.j.chest and 0.45 or 1
+	setJoint(info, "waist", fromYXZ(rad(P.wx * share), rad(P.wy * share), rad(P.wz * share)))
+	setJoint(info, "chest", fromYXZ(rad(P.wx * (1 - share)), rad(P.wy * (1 - share)), rad(P.wz * (1 - share))))
+	-- collarbones lift with the arm (a shrug when the arm goes up or out) and drop with it
+	local function shrug(a, b)
+		local e = math.max(0, a, math.abs(b))
+		return math.clamp(e / 160, 0, 1) * 13
+	end
+	setJoint(info, "lcl", CFrame.Angles(0, 0, rad(-shrug(P.lsx, P.lsz))))
+	setJoint(info, "rcl", CFrame.Angles(0, 0, rad(shrug(P.rsx, P.rsz))))
+	-- jaw hangs open a little whenever the head snaps far from its guard angle (hits, knockdowns)
+	setJoint(info, "jaw", CFrame.Angles(-rad(math.min(24, math.abs(P.nx - 4) * 0.55 + (P.ly or 0) * 12)), 0, 0))
 	setJoint(info, "neck", fromYXZ(rad(P.nx), rad(P.ny), rad(P.nz)))
 	setJoint(info, "ls", fromYXZ(rad(P.lsx), rad(P.lsy), rad(P.lsz)))
 	setJoint(info, "le", CFrame.Angles(rad(P.lex), 0, 0))
@@ -1467,9 +1495,9 @@ function Rig.apply(info, P)
 
 	local sides = {
 		{ leg = info.L, w = P.lik, fx = P.lfx, fz = P.lfz, fy = P.lfy, fr = P.lfr, fp = P.lfp or 0,
-			hx = P.lhx, hy = P.lhy, hz = P.lhz, kx = P.lkx, ax = P.lax, keys = { "lh", "lk", "la" } },
+			hx = P.lhx, hy = P.lhy, hz = P.lhz, kx = P.lkx, ax = P.lax, keys = { "lh", "lk", "la" }, toe = "lto" },
 		{ leg = info.R, w = P.rik, fx = P.rfx, fz = P.rfz, fy = P.rfy, fr = P.rfr, fp = P.rfp or 0,
-			hx = P.rhx, hy = P.rhy, hz = P.rhz, kx = P.rkx, ax = P.rax, keys = { "rh", "rk", "ra" } },
+			hx = P.rhx, hy = P.rhy, hz = P.rhz, kx = P.rkx, ax = P.rax, keys = { "rh", "rk", "ra" }, toe = "rto" },
 	}
 	local ltRot = ltCF.Rotation
 	for _, sd in ipairs(sides) do
@@ -1504,6 +1532,9 @@ function Rig.apply(info, P)
 		setJoint(info, sd.keys[1], hipT)
 		setJoint(info, sd.keys[2], kneeT)
 		setJoint(info, sd.keys[3], ankleT)
+		-- toes bend with the foot: heel lifted = ball-of-foot roll, toe pointed = curl
+		local toeDeg = math.clamp(-(sd.fp + sd.ax) * 0.6 + math.max(0, fkAnklePos.Y - minY) * 8, -25, 40)
+		setJoint(info, sd.toe, CFrame.Angles(rad(toeDeg), 0, 0))
 	end
 end
 
@@ -2674,7 +2705,9 @@ return Poses
 				<Properties>
 					<string name="Name">FighterModels</string>
 					<ProtectedString name="Source"><![CDATA[-- IRON CLASH :: original fighter roster
--- Each fighter is a custom R15-structured rig: invisible "bone" parts joined by Motor6Ds, with
+-- Each fighter uses the IRON CLASH skeleton (26 bones): the 15 R15 body joints plus a split spine
+-- (LowerTorso > MidTorso > UpperTorso), collarbones, toes and a jaw, so the body can curve, shrug,
+-- roll through the foot and open its mouth. Bones are invisible parts joined by Motor6Ds, with
 -- stylised geometry (hair, anime faces, outfits) welded onto the bones. Because we build the
 -- skeleton ourselves, every joint the animation system needs is guaranteed to exist.
 -- Works on the server (real fighters) and on clients (menu / HUD previews in ViewportFrames).
@@ -2698,7 +2731,13 @@ local SP = M.SmoothPlastic
 local BONES = {
 	{ "HumanoidRootPart", V(0, 2.85, 0), V(2, 2, 1) },
 	{ "LowerTorso", V(0, 2.56, 0), V(1.2, 0.5, 0.7) },
+	{ "MidTorso", V(0, 3.1, 0), V(1.3, 0.56, 0.7) },
 	{ "UpperTorso", V(0, 3.48, 0), V(1.5, 1.3, 0.75) },
+	{ "LeftClavicle", V(-0.6, 4.02, 0), V(0.5, 0.3, 0.4) },
+	{ "RightClavicle", V(0.6, 4.02, 0), V(0.5, 0.3, 0.4) },
+	{ "Jaw", V(0, 4.45, -0.1), V(0.7, 0.3, 0.7) },
+	{ "LeftToes", V(-0.42, 0.07, -0.5), V(0.42, 0.14, 0.26) },
+	{ "RightToes", V(0.42, 0.07, -0.5), V(0.42, 0.14, 0.26) },
 	{ "Head", V(0, 4.72, 0), V(1.05, 1.05, 1.05) },
 	{ "LeftUpperArm", V(-1.0, 3.55, 0), V(0.5, 0.9, 0.5) },
 	{ "LeftLowerArm", V(-1.0, 2.65, 0), V(0.45, 0.9, 0.45) },
@@ -2715,20 +2754,26 @@ local BONES = {
 }
 local JOINTS = {
 	{ "Root", "HumanoidRootPart", "LowerTorso", V(0, 2.56, 0) },
-	{ "Waist", "LowerTorso", "UpperTorso", V(0, 2.82, 0) },
+	{ "Waist", "LowerTorso", "MidTorso", V(0, 2.82, 0) },
+	{ "Chest", "MidTorso", "UpperTorso", V(0, 3.38, 0) },
 	{ "Neck", "UpperTorso", "Head", V(0, 4.18, 0) },
-	{ "LeftShoulder", "UpperTorso", "LeftUpperArm", V(-1.0, 4.0, 0) },
+	{ "Jaw", "Head", "Jaw", V(0, 4.5, -0.02) },
+	{ "LeftClavicle", "UpperTorso", "LeftClavicle", V(-0.3, 4.02, 0) },
+	{ "RightClavicle", "UpperTorso", "RightClavicle", V(0.3, 4.02, 0) },
+	{ "LeftShoulder", "LeftClavicle", "LeftUpperArm", V(-1.0, 4.0, 0) },
 	{ "LeftElbow", "LeftUpperArm", "LeftLowerArm", V(-1.0, 3.1, 0) },
 	{ "LeftWrist", "LeftLowerArm", "LeftHand", V(-1.0, 2.2, 0) },
-	{ "RightShoulder", "UpperTorso", "RightUpperArm", V(1.0, 4.0, 0) },
+	{ "RightShoulder", "RightClavicle", "RightUpperArm", V(1.0, 4.0, 0) },
 	{ "RightElbow", "RightUpperArm", "RightLowerArm", V(1.0, 3.1, 0) },
 	{ "RightWrist", "RightLowerArm", "RightHand", V(1.0, 2.2, 0) },
 	{ "LeftHip", "LowerTorso", "LeftUpperLeg", V(-0.42, 2.32, 0) },
 	{ "LeftKnee", "LeftUpperLeg", "LeftLowerLeg", V(-0.42, 1.28, 0) },
 	{ "LeftAnkle", "LeftLowerLeg", "LeftFoot", V(-0.42, 0.28, 0) },
+	{ "LeftToe", "LeftFoot", "LeftToes", V(-0.42, 0.1, -0.36) },
 	{ "RightHip", "LowerTorso", "RightUpperLeg", V(0.42, 2.32, 0) },
 	{ "RightKnee", "RightUpperLeg", "RightLowerLeg", V(0.42, 1.28, 0) },
 	{ "RightAnkle", "RightLowerLeg", "RightFoot", V(0.42, 0.28, 0) },
+	{ "RightToe", "RightFoot", "RightToes", V(0.42, 0.1, -0.36) },
 }
 
 ------------------------------------------------------------------------------------------
@@ -2842,6 +2887,21 @@ local function ascending(st)
 	for i = #st, 1, -1 do
 		out[#out + 1] = st[i]
 	end
+	return out
+end
+
+-- the part of a profile between two heights (end rows interpolated), as a new station list
+local function sliceStations(st, y0, y1)
+	st = ascending(st)
+	local out = { sampleStations(st, y0) }
+	out[1] = { y0, table.unpack(out[1], 2, 5) }
+	for _, row in ipairs(st) do
+		if row[1] > y0 + 1e-4 and row[1] < y1 - 1e-4 then
+			out[#out + 1] = row
+		end
+	end
+	local last = sampleStations(st, y1)
+	out[#out + 1] = { y1, table.unpack(last, 2, 5) }
 	return out
 end
 
@@ -3027,7 +3087,7 @@ local function face(head, look)
 			end
 		end
 		if look.beard then
-			ell(head, V(0.56, 0.3, 0.34), V(0, -0.38, -0.3), look.hair, SP)
+			ell(look.jawBone or head, V(0.56, 0.3, 0.34), (look.jawBone and V(0, -0.08, -0.2) or V(0, -0.38, -0.3)), look.hair, SP)
 			ell(head, V(0.3, 0.1, 0.16), V(0, -0.22, -0.46), look.hair, SP) -- moustache
 		end
 		if look.scar then
@@ -3186,6 +3246,20 @@ HAIR.messy = function(head, look)
 	bangs(head, look, { -0.5, 0.1, 0.5 }, 0.5)
 end
 
+HAIR.wolf = function(head, look)
+	local c = look.hair
+	hairCap(head, c, V(1.08, 0.86, 1.1), V(0, 0.2, 0.08))
+	-- long swept-back locks over the crown and shoulders
+	for i, sp in ipairs({ { V(0.3, 0.5, 1), 0.9 }, { V(-0.3, 0.5, 1), 0.9 }, { V(0, 0.4, 1), 1.1 }, { V(0.65, 0.3, 0.8), 0.8 }, { V(-0.65, 0.3, 0.8), 0.8 }, { V(0, 1, 0.3), 0.6 } }) do
+		local d = sp[1].Unit
+		spike(head, d * 0.36 + V(0, 0.16, 0.05), d, sp[2], 0.38, c, rad(i * 31))
+	end
+	for _, x in ipairs({ -0.2, 0, 0.2 }) do
+		spike(head, V(x, 0.42, -0.22), V(x * 0.7, 0.5, -0.75), 0.24, 0.28, c, 0)
+	end
+	bangs(head, look, { -0.5, 0.5 }, 0.6)
+end
+
 HAIR.helmet = function(head, look)
 	local metal = look.top
 	ell(head, V(1.14, 1.16, 1.16), V(0, 0.04, 0), metal, M.Metal, { reflect = 0.05 })
@@ -3217,6 +3291,8 @@ local function arm(B, side, look)
 		return look.skin
 	end
 	local lowerColor = (look.sleeves == "long") and look.top or look.skin
+	-- collarbone / trapezius yoke: rides on the clavicle bone, so the shoulder girdle shrugs when the arm lifts
+	ell(B[side .. "Clavicle"], V(0.78, 0.46, 0.52) * k, V(0, 0, 0), (look.sleeves == "none") and look.skin or look.top)
 	-- deltoid, biceps/triceps and forearm as one continuous lathe each, joined by a shoulder and an elbow cap
 	loft(up, { { 0.52, 0.2 * k, 0.2 * k }, { 0.42, 0.29 * k, 0.28 * k }, { 0.22, 0.31 * k, 0.3 * k }, { 0.0, 0.285 * k, 0.27 * k },
 		{ -0.25, 0.24 * k, 0.235 * k }, { -0.52, 0.205 * k, 0.205 * k } }, upperColor)
@@ -3245,6 +3321,11 @@ local function arm(B, side, look)
 		-- clenched fist: a rounded block with four curled fingers and the thumb locked across them
 		loft(hand, { { 0.18, 0.15 * k, 0.15 * k }, { 0.1, 0.2 * k, 0.2 * k }, { -0.08, 0.215 * k, 0.225 * k }, { -0.2, 0.19 * k, 0.2 * k } }, fist)
 		ell(hand, V(0.4, 0.26, 0.42) * k, V(0, -0.2, 0), fist)
+		if look.claws then
+			for i = 0, 3 do
+				ell(hand, V(0.05, 0.05, 0.2) * k, V((-0.135 + i * 0.09) * k, -0.1, -0.36 * k), look.claws, M.Metal)
+			end
+		end
 		for i = 0, 3 do
 			ell(hand, V(0.1, 0.24, 0.12) * k, V((-0.135 + i * 0.09) * k, -0.1, -0.19 * k), fist)
 		end
@@ -3298,10 +3379,15 @@ local function leg(B, side, look)
 		ell(up, V(0.5, 0.4, 0.52) * k, V(0, -0.5, -0.05), look.trim, M.Metal) -- knee guard
 	end
 	-- shoe: flat rounded sole (an elliptical disc), a heel/instep mass and a toe box that rolls up at the tip
-	band(foot, -0.115, 0.215 * k, 0.4, 0.05, look.sole or C(30, 30, 34), SP, nil, 0, -0.1)
+	local toes = B[side .. "Toes"]
+	local solec = look.sole or C(30, 30, 34)
+	band(foot, -0.115, 0.215 * k, 0.27, 0.05, solec, SP, nil, 0, 0.02)
 	ell(foot, V(0.4, 0.3, 0.52) * k, V(0, 0.02, 0.1), look.shoes)
-	ell(foot, V(0.43, 0.25, 0.5) * k, V(0, -0.0, -0.27), look.shoes)
-	ell(foot, V(0.2, 0.1, 0.3) * k, V(0, -0.05, -0.43), look.shoes)
+	ell(foot, V(0.43, 0.25, 0.38) * k, V(0, 0, -0.2), look.shoes)
+	-- toe box + front of the sole ride on the toe bone, so the shoe rolls through the ball of the foot
+	ell(toes, V(0.42, 0.2, 0.34) * k, V(0, 0.04, 0.0), look.shoes)
+	ell(toes, V(0.2, 0.1, 0.22) * k, V(0, 0.0, -0.1), look.shoes)
+	band(toes, -0.045, 0.205 * k, 0.16, 0.05, solec, SP, nil, 0, 0.03)
 	ell(foot, V(0.36, 0.3, 0.34) * k, V(0, 0.14, 0.14), look.shoes) -- ankle collar
 	ell(foot, V(0.3, 0.05, 0.22) * k, V(0, 0.07, -0.18), look.trim or look.shoes, SP, { noShadow = true }) -- lace panel
 end
@@ -3319,9 +3405,21 @@ local function torso(B, look)
 	local waistCol = (j == "vest" or j == "crop") and look.inner2 or chestCol
 	-- rib cage, abdomen and waist as one lathe, with the trapezius sloping into the neck
 	local kx = (1 + (k - 1) * 0.55) * 1.12
-	loft(ut, { { 0.66, 0.42 * kx, 0.28 * k }, { 0.52, 0.74 * kx, 0.38 * k }, { 0.28, 0.78 * kx, 0.46 * k }, { 0.02, 0.66 * kx, 0.41 * k },
-		{ -0.3, 0.5 * kx, 0.33 * k }, { -0.66, 0.46 * kx, 0.3 * k } }, function(y)
+	local ST = { { 0.66, 0.42 * kx, 0.28 * k }, { 0.52, 0.74 * kx, 0.38 * k }, { 0.28, 0.78 * kx, 0.46 * k }, { 0.02, 0.66 * kx, 0.41 * k },
+		{ -0.3, 0.5 * kx, 0.33 * k }, { -0.66, 0.46 * kx, 0.3 * k } }
+	local function colorAt(y)
 		return (y > -0.2) and chestCol or waistCol
+	end
+	-- the abdomen / lower ribs ride on MidTorso, the chest and shoulders on UpperTorso: the spine curves
+	local upperSt = sliceStations(ST, -0.08, 0.66)
+	local lowerSt = sliceStations(ST, -0.66, -0.06)
+	loft(ut, upperSt, colorAt)
+	local shifted = {}
+	for i, row in ipairs(lowerSt) do
+		shifted[i] = { row[1] + 0.36, row[2], row[3], row[4], row[5] }
+	end
+	loft(B.MidTorso, shifted, function(y)
+		return colorAt(y - 0.36)
 	end)
 	ell(ut, V(1.0 * kx, 0.42, 0.56 * k), V(0, 0.62, 0.04), (j == "vest") and look.skin or chestCol) -- trapezius
 	for _, sx in ipairs({ -1, 1 }) do
@@ -3549,6 +3647,22 @@ local ROSTER = {
 		},
 		style = { hairScale = 1.1, hipBlades = C(196, 204, 214), pouch = C(96, 66, 44), auraRate = 8, hairStyle = "messy", jacket = "crop", sleeves = "long", brows = "angry", bulk = 1.05, smirk = -6 },
 	},
+	{
+		id = "FENRA", name = "FENRA", title = "THE MOON WOLF",
+		bio = "A wolf spirit with a rigged tail and ears that flick with every move. Fast, feral and hard to read.",
+		palettes = {
+			{ skin = C(228, 190, 160), hair = C(210, 214, 226), eye = C(250, 210, 70), top = C(40, 44, 66), trim = C(120, 190, 255),
+				inner = C(210, 214, 226), inner2 = C(210, 214, 226), pants = C(40, 44, 66), belt = C(120, 190, 255), shoes = C(30, 32, 46),
+				wraps = C(210, 214, 226), glow = C(130, 200, 255), fur = C(210, 214, 226), furInner = C(244, 244, 250), tailTip = C(120, 190, 255),
+				claws = C(236, 240, 250), markings = C(90, 140, 200) },
+			{ skin = C(214, 172, 140), hair = C(70, 54, 46), eye = C(120, 255, 170), top = C(70, 30, 24), trim = C(255, 170, 70),
+				inner = C(70, 54, 46), inner2 = C(70, 54, 46), pants = C(70, 30, 24), belt = C(255, 170, 70), shoes = C(40, 24, 20),
+				wraps = C(70, 54, 46), glow = C(255, 180, 80), fur = C(70, 54, 46), furInner = C(150, 110, 84), tailTip = C(255, 170, 70),
+				claws = C(240, 220, 190), markings = C(255, 170, 70) },
+		},
+		style = { hairStyle = "wolf", jacket = "crop", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 14, hairScale = 1.2,
+			ears = true, tail = true, mane = true, claws = true, auraRate = 12, bulk = 1.0 },
+	},
 }
 
 FighterModels.ROSTER = ROSTER
@@ -3626,9 +3740,12 @@ function FighterModels.build(id, palette, displayName)
 	if look.face ~= "helmet" then
 		ell(head, V(0.96, 1.0, 0.98), V(0, 0.06, 0.02), look.skin) -- cranium
 		-- cheeks narrowing into a defined jaw and chin (overlapping masses, no visible seam)
-		ell(head, V(0.88, 0.56, 0.92), V(0, -0.14, -0.03), look.skin)
-		ell(head, V(0.66, 0.46, 0.76), V(0, -0.3, -0.08), look.skin)
-		ell(head, V(0.38, 0.3, 0.44), V(0, -0.42, -0.13), look.skin) -- chin
+		ell(head, V(0.88, 0.5, 0.92), V(0, -0.1, -0.03), look.skin)
+		-- lower jaw and chin ride on the Jaw bone (it drops open when the head snaps back)
+		local jaw = B.Jaw
+		ell(jaw, V(0.66, 0.46, 0.76), V(0, 0.0, -0.0), look.skin)
+		ell(jaw, V(0.38, 0.3, 0.44), V(0, -0.12, -0.04), look.skin) -- chin
+		look.jawBone = jaw
 		for _, sx in ipairs({ -1, 1 }) do
 			ell(head, V(0.1, 0.22, 0.16), V(0.48 * sx, -0.02, 0.04), look.skin)
 		end
@@ -3644,6 +3761,34 @@ function FighterModels.build(id, palette, displayName)
 		vis(head, "ellipsoid", V(0.14, 0.08, 0.05), band0 * CFrame.new(0, 0, -0.04), C(70, 76, 90), M.Metal)
 	end
 
+	-- custom rig extras: every one of these is its own chain of bones driven by Shared/Secondary
+	if look.ears then
+		-- upright wolf ears; a stiff two-bone chain each, so they flick and fold back when she moves fast
+		for _, sx in ipairs({ -1, 1 }) do
+			chain(head, "Ear" .. (sx < 0 and "L" or "R"), V(0.28 * sx, 0.42, 0.06), { V(0.25 * sx, 1, 0.1), V(0.3 * sx, 1, 0.15) }, { 0.3, 0.26 },
+				function(bone, i, s0, e0)
+					strand(bone, s0, e0, 0.3 - 0.1 * i, 0.12, look.fur, M.Fabric)
+					if i == 1 then
+						strand(bone, s0 + V(0, 0.02, -0.05), e0 + V(0, 0, -0.05), 0.15, 0.05, look.furInner or look.skin, M.Fabric)
+					end
+				end, { stiff = 160, drag = 12, grav = 0.3, limit = 45 })
+		end
+	end
+	if look.tail then
+		-- a long bushy tail: five bones that whip, trail behind sprints and settle with a lazy sway
+		local widths = { 0.34, 0.42, 0.46, 0.4, 0.26 }
+		chain(B.LowerTorso, "Tail", V(0, -0.05, 0.3), { V(0, -0.25, 1), V(0, 0.1, 1), V(0, 0.35, 1), V(0, 0.5, 1), V(0, 0.5, 0.8) }, { 0.5, 0.5, 0.5, 0.45, 0.4 },
+			function(bone, i, s0, e0)
+				strand(bone, s0, e0, widths[i], widths[i] * 0.95, (i == 5) and look.tailTip or look.fur, M.Fabric)
+			end, { stiff = 22, drag = 5, grav = 0.8, limit = 75 })
+	end
+	if look.mane then
+		-- thick ruff round the neck and shoulders
+		for i = 0, 9 do
+			local an = i / 10 * math.pi * 2
+			ell(B.UpperTorso, V(0.34, 0.5, 0.34), V(math.cos(an) * 0.34, 0.62, math.sin(an) * 0.3), look.furInner or look.fur, M.Fabric, nil, CFrame.Angles(0, -an, rad(55)))
+		end
+	end
 	torso(B, look)
 	arm(B, "Left", look)
 	arm(B, "Right", look)
@@ -11367,7 +11512,7 @@ end
 
 -- neon silhouette afterimages that trail behind big moves
 local GHOST_PARTS = {
-	"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
+	"Head", "Jaw", "UpperTorso", "MidTorso", "LowerTorso", "LeftClavicle", "RightClavicle", "LeftToes", "RightToes", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
 	"RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot",
 }
 

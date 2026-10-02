@@ -70,7 +70,7 @@ class Models(unittest.TestCase):
         for f in self.roster():
             m = self.FM.build(f.id, 1, f.name)
             n = len(parts_of(m))
-            self.assertLess(n, 300, f"{f.id} has {n} parts")
+            self.assertLess(n, 360, f"{f.id} has {n} parts")
 
     def test_every_fighter_has_secondary_chains(self):
         for f in self.roster():
@@ -134,6 +134,53 @@ class Models(unittest.TestCase):
             self.assertTrue(all(l.Transparency == 0 for l in lids), "flinch closes the eyes")
             self.Life.clear(life)
             self.assertTrue(all(l.Transparency == 1 for l in lids))
+
+    def test_custom_skeleton_has_26_bones_and_joints(self):
+        bones = {"HumanoidRootPart", "LowerTorso", "MidTorso", "UpperTorso", "Head", "Jaw", "LeftClavicle", "RightClavicle",
+                 "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand",
+                 "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "LeftToes", "RightUpperLeg", "RightLowerLeg", "RightFoot", "RightToes"}
+        for f in self.roster():
+            m = self.FM.build(f.id, 1, f.name)
+            names = {p.Name for p in parts_of(m) if not p.Name.startswith("SecBone") and p.Name != "Vis"}
+            self.assertTrue(bones <= names, f"{f.id} missing {bones - names}")
+            motors = [d for d in lua_list(m.GetDescendants(m)) if d.IsA(d, "Motor6D") and not d.Name.startswith("Sec_")]
+            self.assertEqual(len(motors), 21, f"{f.id}: {[x.Name for x in motors]}")
+
+    def pose_with(self, **kw):
+        m = self.FM.build("KAI", 1, "KAI")
+        info = self.Rig.measure(m)
+        P = self.g.lua.table_from(dict(self.Poses.DEFAULT.items()) if hasattr(self.Poses.DEFAULT, "items") else {})
+        for k in lua_list(self.g.lua.eval("(function(t) local o = {} for k in pairs(t) do o[#o+1] = k end return o end)")(self.Poses.DEFAULT)):
+            P[k] = self.Poses.DEFAULT[k]
+        for k, v in kw.items():
+            P[k] = v
+        self.Rig.apply(info, P)
+        return m, info
+
+    @staticmethod
+    def angle(motor):
+        return math.degrees(math.acos(max(-1, min(1, (motor.C0.r[1] + motor.C0.r[5] + motor.C0.r[9] - 1) / 2))))
+
+    def test_spine_is_shared_between_waist_and_chest(self):
+        m, info = self.pose_with(wx=30, wy=0, wz=0)
+        waist, chest = m.MidTorso.Waist, m.UpperTorso.Chest
+        self.assertGreater(self.angle(waist), 5)
+        self.assertGreater(self.angle(chest), 5)
+        self.assertAlmostEqual(self.angle(waist) + self.angle(chest), 30, delta=1.5)
+
+    def test_collarbones_shrug_with_the_arms(self):
+        m0, _ = self.pose_with(lsx=0, lsz=0)
+        m1, _ = self.pose_with(lsx=150, lsz=0)
+        self.assertLess(self.angle(m0.LeftClavicle.LeftClavicle), 0.5)
+        self.assertGreater(self.angle(m1.LeftClavicle.LeftClavicle), 8)
+
+    def test_jaw_opens_and_toes_bend(self):
+        m0, _ = self.pose_with(nx=4)
+        m1, _ = self.pose_with(nx=-40)
+        self.assertLess(self.angle(m0.Jaw.Jaw), 0.5)
+        self.assertGreater(self.angle(m1.Jaw.Jaw), 10)
+        m2, _ = self.pose_with(rfp=-30, rfy=0.4)
+        self.assertGreater(self.angle(m2.RightToes.RightToe), 5)
 
     def test_limbs_are_continuous_lathes(self):
         """Arms and legs are stacks of overlapping discs: neighbours must overlap and step in width gently."""
