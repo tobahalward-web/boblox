@@ -136,6 +136,79 @@ local function taper(bone, pts, depth, color, material, opts, xOffset)
 	end
 end
 
+-- Samples a smooth (Catmull-Rom) curve through rows of numbers: stations = { {t, a, b, ...}, ... }
+local function sampleStations(st, t)
+	local n = #st
+	if t <= st[1][1] then
+		return st[1]
+	end
+	if t >= st[n][1] then
+		return st[n]
+	end
+	local i = 1
+	while t > st[i + 1][1] do
+		i = i + 1
+	end
+	local p0, p1, p2, p3 = st[math.max(i - 1, 1)], st[i], st[i + 1], st[math.min(i + 2, n)]
+	local u = (t - p1[1]) / (p2[1] - p1[1])
+	local out = { t }
+	for c = 2, 5 do
+		local a, b, cc, d = p0[c] or 0, p1[c] or 0, p2[c] or 0, p3[c] or 0
+		out[c] = 0.5 * ((2 * b) + (-a + cc) * u + (2 * a - 5 * b + 4 * cc - d) * u * u + (-a + 3 * b - 3 * cc + d) * u * u * u)
+	end
+	return out
+end
+
+local function ascending(st)
+	if st[1][1] <= st[#st][1] then
+		return st
+	end
+	local out = {}
+	for i = #st, 1, -1 do
+		out[#out + 1] = st[i]
+	end
+	return out
+end
+
+-- A lathe-style body part: stacked elliptical discs along the bone's local Y axis following a smooth
+-- profile, { {y, radiusX, radiusZ [, offsetX, offsetZ]}, ... } ordered top to bottom. The discs are a
+-- true curved surface (no beads or facets) so limbs and the torso read as one continuous form.
+-- `color` may be a function(y) -> Color3 for clothing boundaries.
+local function loft(bone, st, color, material, opts)
+	st = ascending(st)
+	local top, bottom = st[#st][1], st[1][1]
+	local len = math.abs(top - bottom)
+	local count = math.max(2, math.ceil(len / 0.085))
+	local step = len / count
+	for i = 1, count do
+		local y = top + (bottom - top) * ((i - 0.5) / count)
+		local s = sampleStations(st, y)
+		local c = (type(color) == "function") and color(y) or color
+		local cf = bone.CFrame * CFrame.new(s[4] or 0, y, s[5] or 0) * CFrame.Angles(0, 0, rad(90))
+		vis(bone, "cyl", V(step * 1.7, math.max(s[2] * 2, 0.02), math.max(s[3] * 2, 0.02)), cf, c, material or SP, opts)
+	end
+end
+
+-- one elliptical disc (a ring / band / belt) around the bone's Y axis
+local function band(bone, y, rx, rz, thick, color, material, opts, ox, oz)
+	return vis(bone, "cyl", V(thick, rx * 2, rz * 2), bone.CFrame * CFrame.new(ox or 0, y, oz or 0) * CFrame.Angles(0, 0, rad(90)), color, material or SP, opts)
+end
+
+-- the same along the bone's Z axis (shoes): stations = { {z, radiusX, radiusY, centreY}, ... } heel to toe
+local function loftZ(bone, st, color, material, opts)
+	st = ascending(st)
+	local first, last = st[1][1], st[#st][1]
+	local len = math.abs(last - first)
+	local count = math.max(2, math.ceil(len / 0.07))
+	local step = len / count
+	for i = 1, count do
+		local z = first + (last - first) * ((i - 0.5) / count)
+		local s = sampleStations(st, z)
+		local cf = bone.CFrame * CFrame.new(0, s[4], z) * CFrame.Angles(0, rad(90), 0)
+		vis(bone, "cyl", V(step * 1.7, math.max(s[3] * 2, 0.02), math.max(s[2] * 2, 0.02)), cf, color, material or SP, opts)
+	end
+end
+
 -- vertical cylinder (along the bone's Y axis)
 local function vcyl(bone, len, d, localPos, color, material, opts)
 	return vis(bone, "cyl", V(len, d, d), bone.CFrame * CFrame.new(localPos) * CFrame.Angles(0, 0, rad(90)), color, material, opts)
@@ -235,6 +308,11 @@ local function face(head, look)
 			vis(head, "ellipsoid", V(0.08, 0.12, 0.05), cf * CFrame.new(0, -0.03, -0.022), C(16, 12, 20), SP, { noShadow = true })
 			vis(head, "ellipsoid", V(0.065, 0.075, 0.05), cf * CFrame.new(-0.035 * sx, 0.05, -0.03), C(255, 255, 255), M.Neon, { noShadow = true })
 			vis(head, "ellipsoid", V(0.27, 0.055, 0.05), cf * CFrame.new(0.01 * sx, 0.14, -0.012) * CFrame.Angles(0, 0, rad(-6 * sx)), dark, SP, { noShadow = true })
+			-- eyelid (skin + lash line), invisible until Shared/Life closes it for a blink
+			local lid = vis(head, "ellipsoid", V(0.23, 0.31, 0.06), cf * CFrame.new(0, 0.0, -0.034), look.skin, SP, { noShadow = true, name = "Eyelid" })
+			lid.Transparency = 1
+			local lash = vis(head, "ellipsoid", V(0.22, 0.035, 0.06), cf * CFrame.new(0, -0.05, -0.04), dark, SP, { noShadow = true, name = "Eyelid" })
+			lash.Transparency = 1
 			local tilt = (look.brows == "calm") and 4 or 14
 			local bcf = onHead(head, V(0.37 * sx, 0.33, -0.86))
 			vis(head, "ellipsoid", V(0.27, 0.065, 0.05), bcf * CFrame.Angles(0, 0, rad(-tilt * sx)), look.browColor or look.hair, SP, { noShadow = true })
@@ -392,17 +470,28 @@ local function arm(B, side, look)
 	local sx = (side == "Left") and -1 or 1
 	local up, lo, hand = B[side .. "UpperArm"], B[side .. "LowerArm"], B[side .. "Hand"]
 	local k = look.bulk or 1
-	local sleeveUp = (look.sleeves == "short" or look.sleeves == "long") and look.top or look.skin
-	local sleeveLo = (look.sleeves == "long") and look.top or look.skin
-	-- shoulder cap, then upper arm and forearm as smooth tapers (thick at the muscle, slim at the wrist)
-	ell(up, V(0.6, 0.6, 0.6) * k, V(0, 0.38, 0), (look.sleeves == "none") and look.skin or look.top)
-	taper(up, { { 0.5, 0.5 * k }, { 0.2, 0.56 * k }, { -0.2, 0.5 * k }, { -0.52, 0.4 * k } }, 1.0, sleeveUp)
-	taper(lo, { { 0.5, 0.42 * k }, { 0.15, 0.5 * k }, { -0.2, 0.4 * k }, { -0.5, 0.28 * k } }, 1.0, sleeveLo)
+	local function upperColor(y)
+		if look.sleeves == "long" then
+			return look.top
+		elseif look.sleeves == "short" then
+			return (y > 0.02) and look.top or look.skin
+		end
+		return look.skin
+	end
+	local lowerColor = (look.sleeves == "long") and look.top or look.skin
+	-- deltoid, biceps/triceps and forearm as one continuous lathe each, joined by a shoulder and an elbow cap
+	loft(up, { { 0.52, 0.2 * k, 0.2 * k }, { 0.42, 0.29 * k, 0.28 * k }, { 0.22, 0.31 * k, 0.3 * k }, { 0.0, 0.285 * k, 0.27 * k },
+		{ -0.25, 0.24 * k, 0.235 * k }, { -0.52, 0.205 * k, 0.205 * k } }, upperColor)
+	ell(up, V(0.62, 0.6, 0.6) * k, V(0, 0.4, 0), (look.sleeves == "none") and look.skin or look.top) -- shoulder cap
+	ell(up, V(0.42, 0.42, 0.42) * k, V(0, -0.47, 0), lowerColor) -- elbow
+	loft(lo, { { 0.5, 0.205 * k, 0.205 * k }, { 0.32, 0.235 * k, 0.23 * k }, { 0.05, 0.2 * k, 0.19 * k }, { -0.3, 0.165 * k, 0.16 * k },
+		{ -0.5, 0.15 * k, 0.15 * k } }, lowerColor)
 	if look.sleeves == "short" then
-		vcyl(up, 0.16, 0.5 * k, V(0, -0.22, 0), look.trim, SP)
+		band(up, 0.0, 0.3 * k, 0.285 * k, 0.07, look.trim)
 	end
 	if look.wraps then
-		vcyl(lo, 0.36, 0.4 * k, V(0, -0.22, 0), look.wraps, M.Fabric)
+		vcyl(lo, 0.34, 0.4 * k, V(0, -0.22, 0), look.wraps, M.Fabric)
+		vcyl(lo, 0.05, 0.43 * k, V(0, -0.06, 0), look.wraps, M.Fabric)
 	end
 	if look.bracer then
 		vcyl(lo, 0.42, 0.44 * k, V(0, -0.15, 0), look.bracer, M.Metal, { reflect = 0.1 })
@@ -410,50 +499,73 @@ local function arm(B, side, look)
 	end
 	local fist = look.glove or look.skin
 	if look.face == "helmet" then
-		-- armoured gauntlet: rounded knuckle plates
-		ell(hand, V(0.52, 0.5, 0.56) * k, V(0, -0.02, 0), look.trim, M.Metal)
-		ell(hand, V(0.5, 0.08, 0.54) * k, V(0, 0.16, 0), look.glow, M.Neon, { noShadow = true })
+		-- armoured gauntlet: a plated fist with a glowing seam
+		loft(hand, { { 0.18, 0.17 * k, 0.17 * k }, { 0.1, 0.24 * k, 0.24 * k }, { -0.08, 0.255 * k, 0.26 * k }, { -0.2, 0.22 * k, 0.23 * k } }, look.trim, M.Metal)
+		ell(hand, V(0.46, 0.28, 0.48) * k, V(0, -0.2, 0), look.trim, M.Metal)
+		band(hand, 0.14, 0.25 * k, 0.25 * k, 0.05, look.glow, M.Neon, { noShadow = true })
 	else
-		ell(hand, V(0.44, 0.46, 0.5) * k, V(0, -0.02, 0), fist)
-		ell(hand, V(0.18, 0.2, 0.28) * k, V(-0.2 * sx, 0.04, -0.12), fist) -- thumb
+		-- clenched fist: a rounded block with four curled fingers and the thumb locked across them
+		loft(hand, { { 0.18, 0.15 * k, 0.15 * k }, { 0.1, 0.2 * k, 0.2 * k }, { -0.08, 0.215 * k, 0.225 * k }, { -0.2, 0.19 * k, 0.2 * k } }, fist)
+		ell(hand, V(0.4, 0.26, 0.42) * k, V(0, -0.2, 0), fist)
+		for i = 0, 3 do
+			ell(hand, V(0.1, 0.24, 0.12) * k, V((-0.135 + i * 0.09) * k, -0.1, -0.19 * k), fist)
+		end
+		ell(hand, V(0.22, 0.1, 0.12) * k, V(-0.04 * sx * k, -0.03, -0.24 * k), fist, SP, nil, CFrame.Angles(0, 0, rad(-12 * sx)))
 		if look.glove and look.glowGloves then
-			vcyl(hand, 0.07, 0.4 * k, V(0, 0.15, 0), look.glow, M.Neon, { noShadow = true })
+			vcyl(hand, 0.07, 0.42 * k, V(0, 0.1, 0), look.glow, M.Neon, { noShadow = true })
 		end
 	end
 	if look.pauldrons then
-		ell(up, V(0.84, 0.52, 0.8) * k, V(0.12 * sx, 0.42, 0), look.trim, M.Metal)
-		ell(up, V(0.12, 0.1, 0.62) * k, V(0.42 * sx, 0.42, 0), look.glow, M.Neon, { noShadow = true })
+		-- layered shoulder plates, each lamellar disc a little wider than the one above
+		for n = 0, 3 do
+			band(up, 0.56 - n * 0.1, (0.34 + n * 0.05) * k, (0.3 + n * 0.045) * k, 0.12, look.trim, M.Metal, { reflect = 0.05 }, 0.1 * sx * (1 + n * 0.3), 0)
+		end
+		band(up, 0.1, 0.3 * k, 0.285 * k, 0.04, look.glow, M.Neon, { noShadow = true })
 	end
 end
 
 local function leg(B, side, look)
 	local up, lo, foot = B[side .. "UpperLeg"], B[side .. "LowerLeg"], B[side .. "Foot"]
 	local k = look.bulk or 1
-	local wide = (look.pantsStyle == "gi") and 1.12 or 1
-	local thighCol = look.pants
+	local w = ((look.pantsStyle == "gi") and 1.12 or 1) * k
+	local shorts = look.pantsStyle == "shorts"
 	local shinCol = look.legs or look.pants
-	if look.pantsStyle == "shorts" then
-		taper(up, { { 0.58, 0.66 * k }, { 0.15, 0.7 * k }, { -0.1, 0.62 * k } }, 1.0, look.pants, M.Fabric)
-		taper(up, { { -0.1, 0.58 * k }, { -0.35, 0.52 * k }, { -0.56, 0.46 * k } }, 1.0, shinCol)
-		thighCol = shinCol
-	else
-		-- quad / hamstring mass, widest just below the hip
-		taper(up, { { 0.6, 0.62 * k * wide }, { 0.2, 0.7 * k * wide }, { -0.2, 0.6 * k * wide }, { -0.56, 0.46 * k * wide } }, 1.0, thighCol, M.Fabric)
+	if shorts then
+		shinCol = look.legs or look.skin
 	end
-	-- calf: bulges just below the knee and tapers to the ankle
-	taper(lo, { { 0.56, 0.46 * k * wide }, { 0.2, 0.56 * k * wide }, { -0.15, 0.42 * k * wide }, { -0.5, 0.3 * k * wide } }, 1.05, shinCol, M.Fabric)
+	local function thighColor(y)
+		if shorts and y < -0.1 then
+			return shinCol
+		end
+		return look.pants
+	end
+	-- quad / hamstring mass widest just under the hip, narrowing into the knee
+	loft(up, { { 0.6, 0.29 * w, 0.29 * w }, { 0.38, 0.345 * w, 0.34 * w }, { 0.05, 0.33 * w, 0.34 * w }, { -0.28, 0.275 * w, 0.28 * w },
+		{ -0.52, 0.225 * w, 0.225 * w } }, thighColor, M.Fabric)
+	ell(up, V(0.44, 0.44, 0.46) * w, V(0, -0.5, 0), shorts and shinCol or look.pants, M.Fabric) -- knee
+	-- calf: bulges just below the knee (towards the back) and tapers into the ankle
+	loft(lo, { { 0.52, 0.225 * w, 0.225 * w }, { 0.28, 0.265 * w, 0.275 * w, 0, 0.02 }, { -0.05, 0.215 * w, 0.215 * w }, { -0.3, 0.17 * w, 0.17 * w },
+		{ -0.5, 0.14 * w, 0.14 * w } }, shinCol, M.Fabric)
+	if shorts then
+		band(up, -0.1, 0.305 * w, 0.31 * w, 0.07, look.trim or look.pants, M.Fabric)
+	end
 	if look.pantsStyle == "gi" and look.wraps then
-		vcyl(lo, 0.22, 0.46 * k, V(0, -0.38, 0), look.wraps, M.Fabric)
+		vcyl(lo, 0.22, 0.4 * w, V(0, -0.38, 0), look.wraps, M.Fabric)
 	end
 	if look.face == "helmet" then
-		ell(lo, V(0.6, 0.56, 0.6) * k, V(0, -0.14, 0), look.trim, M.Metal)
-		ell(up, V(0.58, 0.46, 0.6) * k, V(0, -0.5, -0.04), look.trim, M.Metal) -- knee guard
+		-- greaves: lamellar shin plates, and a knee cap
+		for n = 0, 2 do
+			band(lo, 0.1 - n * 0.16, (0.285 - n * 0.025) * k, (0.29 - n * 0.025) * k, 0.15, look.trim, M.Metal, { reflect = 0.05 })
+		end
+		ell(up, V(0.5, 0.4, 0.52) * k, V(0, -0.5, -0.05), look.trim, M.Metal) -- knee guard
 	end
-	-- shoe: rounded toe box + heel + sole
-	ell(foot, V(0.48, 0.3, 0.7) * k, V(0, 0.02, 0.1), look.shoes)
-	ell(foot, V(0.46, 0.3, 0.46) * k, V(0, 0.02, -0.28), look.shoes)
-	ell(foot, V(0.5, 0.1, 0.94) * k, V(0, -0.1, 0), look.sole or C(30, 30, 34))
-	ell(foot, V(0.34, 0.26, 0.3) * k, V(0, 0.16, 0.22), look.shoes) -- ankle collar
+	-- shoe: flat rounded sole (an elliptical disc), a heel/instep mass and a toe box that rolls up at the tip
+	band(foot, -0.115, 0.215 * k, 0.4, 0.05, look.sole or C(30, 30, 34), SP, nil, 0, -0.1)
+	ell(foot, V(0.4, 0.3, 0.52) * k, V(0, 0.02, 0.1), look.shoes)
+	ell(foot, V(0.43, 0.25, 0.5) * k, V(0, -0.0, -0.27), look.shoes)
+	ell(foot, V(0.2, 0.1, 0.3) * k, V(0, -0.05, -0.43), look.shoes)
+	ell(foot, V(0.36, 0.3, 0.34) * k, V(0, 0.14, 0.14), look.shoes) -- ankle collar
+	ell(foot, V(0.3, 0.05, 0.22) * k, V(0, 0.07, -0.18), look.trim or look.shoes, SP, { noShadow = true }) -- lace panel
 end
 
 local function torso(B, look)
@@ -467,15 +579,18 @@ local function torso(B, look)
 		chestCol = look.inner
 	end
 	local waistCol = (j == "vest" or j == "crop") and look.inner2 or chestCol
-	-- rib cage, abdomen, trapezius
-	ell(ut, V(1.42, 1.16, 0.82) * V(k, 1, k), V(0, 0.13, 0), chestCol)
-	ell(ut, V(1.1, 0.88, 0.68) * V(k, 1, k), V(0, -0.4, 0), waistCol)
-	ell(ut, V(0.98, 0.44, 0.62) * V(k, 1, k), V(0, 0.72, 0.04), (j == "vest") and look.skin or chestCol)
+	-- rib cage, abdomen and waist as one lathe, with the trapezius sloping into the neck
+	local kx = 1 + (k - 1) * 0.55
+	loft(ut, { { 0.64, 0.36 * kx, 0.25 * k }, { 0.5, 0.7 * kx, 0.34 * k }, { 0.28, 0.74 * kx, 0.4 * k }, { 0.0, 0.64 * kx, 0.38 * k },
+		{ -0.3, 0.52 * kx, 0.33 * k }, { -0.66, 0.46 * kx, 0.3 * k } }, function(y)
+		return (y > -0.2) and chestCol or waistCol
+	end)
+	ell(ut, V(0.86 * kx, 0.34, 0.5 * k), V(0, 0.64, 0.03), (j == "vest") and look.skin or chestCol)
 	vcyl(ut, 0.42, 0.36 * k, V(0, 0.68, 0), look.skin, SP)
 	if j == nil or j == "gi" or j == "crop" then
 		-- chest definition under tight tops
 		for _, sx in ipairs({ -1, 1 }) do
-			ell(ut, V(0.62, 0.46, 0.3) * V(k, 1, k), V(0.32 * sx * k, 0.4, -0.31 * k), chestCol)
+			ell(ut, V(0.56, 0.4, 0.26) * V(kx, 1, k), V(0.31 * sx * kx, 0.36, -0.33 * k), chestCol)
 		end
 	end
 	if j == "gi" then
@@ -534,8 +649,8 @@ local function torso(B, look)
 		end
 	end
 	-- hips + belt
-	ell(lt, V(1.2, 0.64, 0.74) * V(k, 1, k), V(0, -0.02, 0), look.pants, M.Fabric)
-	ell(lt, V(1.24, 0.2, 0.78) * V(k, 1, k), V(0, 0.19, 0), look.belt, look.beltMat or M.Fabric)
+	loft(lt, { { 0.3, 0.44 * kx, 0.29 * k }, { 0.12, 0.55 * kx, 0.35 * k }, { -0.1, 0.56 * kx, 0.36 * k }, { -0.3, 0.46 * kx, 0.31 * k } }, look.pants, M.Fabric)
+	band(lt, 0.19, 0.53 * kx, 0.35 * k, 0.17, look.belt, look.beltMat or M.Fabric)
 	if look.pantsStyle == "gi" then
 		ell(lt, V(0.22, 0.2, 0.12), V(0.1, 0.18, -0.38 * k), look.belt, M.Fabric)
 		-- the belt knot's loose ends flutter

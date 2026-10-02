@@ -8,6 +8,7 @@ local Rig = require(Shared:WaitForChild("Rig"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local Moves = require(Shared:WaitForChild("Moves"))
 local Secondary = require(Shared:WaitForChild("Secondary"))
+local Life = require(Shared:WaitForChild("Life"))
 
 local Animator = {}
 Animator.__index = Animator
@@ -127,6 +128,7 @@ function Animator:track(char, motor, floorY)
 		floorY = floorY or 0,
 		pose = Poses.make(),
 		sec = Secondary.new(char),
+		life = Life.new(char, math.random(1, 1000)),
 		spring = Poses.newSpring(Poses.Base.STANCE),
 		phase = math.random() * 10,
 		key = nil,
@@ -154,6 +156,7 @@ function Animator:untrack(char)
 			tr.guardConn:Disconnect()
 		end
 		Secondary.clear(tr.sec)
+		Life.clear(tr.life)
 		Rig.clear(tr.info)
 		for _, t in pairs(tr.trails) do
 			t.trail:Destroy()
@@ -338,8 +341,13 @@ function Animator:stepTrack(tr, dt, now)
 		-- joints can replicate a moment after the model: look again for secondary-motion chains
 		tr.secCheck = self.clock + 2
 		tr.sec = Secondary.new(tr.char)
+		tr.life = Life.new(tr.char, math.random(1, 1000))
 	end
 	Secondary.step(tr.sec, dt) -- hair, scarves and coat tails follow through (frozen during hit-stop)
+	if st.state == "Hitstun" or st.state == "KO" or st.state == "Knockdown" then
+		Life.squeeze(tr.life, 0.2) -- flinch
+	end
+	Life.step(tr.life, dt)
 end
 
 function Animator:step(dt, now)

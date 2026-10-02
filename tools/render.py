@@ -42,37 +42,49 @@ class Scene:
         return [a[list(t)] for t in f]
 
     @staticmethod
-    def _cyl_tris(length, diameter, n=18):
-        # axis = X
-        r = diameter / 2
+    def _cyl_tris(length, dy, dz=None, n=24):
+        """Cylinder along X with an elliptical cross-section (dy x dz). Returns (tri, normals) pairs."""
+        dz = dy if dz is None else dz
+        ry, rz = dy / 2, dz / 2
         h = length / 2
         out = []
-        ring = [(math.cos(2 * math.pi * i / n) * r, math.sin(2 * math.pi * i / n) * r) for i in range(n + 1)]
+        ring = []
+        for i in range(n + 1):
+            a = 2 * math.pi * i / n
+            ring.append((math.cos(a) * ry, math.sin(a) * rz, math.cos(a) / max(ry, 1e-6), math.sin(a) / max(rz, 1e-6)))
         for i in range(n):
-            (y0, z0), (y1, z1) = ring[i], ring[i + 1]
+            (y0, z0, ny0, nz0), (y1, z1, ny1, nz1) = ring[i], ring[i + 1]
+            n0 = _unit(np.array([0, ny0, nz0]))
+            n1 = _unit(np.array([0, ny1, nz1]))
             a, b, c, d = (-h, y0, z0), (h, y0, z0), (h, y1, z1), (-h, y1, z1)
-            out.append(np.array([a, b, c]))
-            out.append(np.array([a, c, d]))
-            out.append(np.array([(h, 0, 0), b, c]))
-            out.append(np.array([(-h, 0, 0), d, a]))
+            out.append((np.array([a, b, c]), np.array([n0, n0, n1])))
+            out.append((np.array([a, c, d]), np.array([n0, n1, n1])))
+            cap = np.array([1.0, 0, 0])
+            out.append((np.array([(h, 0, 0), b, c]), np.array([cap, cap, cap])))
+            out.append((np.array([(-h, 0, 0), d, a]), np.array([-cap, -cap, -cap])))
         return out
 
     @staticmethod
-    def _sphere_tris(sx, sy, sz, nu=20, nv=12):
+    def _sphere_tris(sx, sy, sz, nu=24, nv=14):
         out = []
-        pts = []
+        pts, nrm = [], []
         for j in range(nv + 1):
             phi = math.pi * j / nv
-            row = []
+            row, nrow = [], []
             for i in range(nu + 1):
                 th = 2 * math.pi * i / nu
-                row.append((math.sin(phi) * math.cos(th) * sx / 2, math.cos(phi) * sy / 2, math.sin(phi) * math.sin(th) * sz / 2))
+                ux, uy, uz = math.sin(phi) * math.cos(th), math.cos(phi), math.sin(phi) * math.sin(th)
+                row.append((ux * sx / 2, uy * sy / 2, uz * sz / 2))
+                nrow.append(_unit(np.array([ux / max(sx, 1e-6), uy / max(sy, 1e-6), uz / max(sz, 1e-6)])))
             pts.append(row)
+            nrm.append(nrow)
         for j in range(nv):
             for i in range(nu):
-                a, b, c, d = pts[j][i], pts[j][i + 1], pts[j + 1][i + 1], pts[j + 1][i]
-                out.append(np.array([a, c, b]))
-                out.append(np.array([a, d, c]))
+                a, b, c, d = (j, i), (j, i + 1), (j + 1, i + 1), (j + 1, i)
+                P = lambda k: pts[k[0]][k[1]]
+                N = lambda k: nrm[k[0]][k[1]]
+                out.append((np.array([P(a), P(c), P(b)]), np.array([N(a), N(c), N(b)])))
+                out.append((np.array([P(a), P(d), P(c)]), np.array([N(a), N(d), N(c)])))
         return out
 
     def add(self, part):
@@ -90,15 +102,19 @@ class Scene:
             d = min(sx, sy, sz)
             tris = self._sphere_tris(d, d, d)
         elif sh == "Cylinder":
-            tris = self._cyl_tris(sx, min(sy, sz))
+            tris = self._cyl_tris(sx, sy, sz)
         elif sh == "Wedge":
             tris = self._wedge_tris(sx, sy, sz)
         else:
             tris = self._box_tris(sx, sy, sz)
         alpha = 1.0 - part.get("t", 0.0)
         for t in tris:
+            vn = None
+            if isinstance(t, tuple):
+                t, vn = t
+                vn = (R @ vn.T).T
             w = (R @ t.T).T + P
-            self.tris.append((w, part["col"], alpha, part.get("neon", False)))
+            self.tris.append((w, part["col"], alpha, part.get("neon", False), vn))
 
 
 def look_at(eye, target, up=(0, 1, 0)):
@@ -132,7 +148,7 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
     cx = rel @ r
     cy = rel @ u
     cz = rel @ f
-    # normals
+    # normals: face normal for flat parts, per-vertex normals (smooth shading) for spheres/cylinders
     e1 = V[:, 1] - V[:, 0]
     e2 = V[:, 2] - V[:, 0]
     nrm = np.cross(e1, e2)
@@ -140,23 +156,30 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
     nl[nl < 1e-12] = 1
     nrm = nrm / nl
     centers = V.mean(axis=1)
-    # make normal face the camera
     toeye = eye - centers
     flip = (nrm * toeye).sum(axis=1) < 0
     nrm[flip] *= -1
-    lam = np.clip((nrm * L).sum(axis=1), 0, 1)
-    sky = 0.5 + 0.5 * nrm[:, 1]
+    vn = np.repeat(nrm[:, None, :], 3, axis=1)  # N,3,3
+    for k, t in enumerate(tris):
+        if t[4] is not None:
+            # smooth part: trust the supplied outward normals (flip them with the triangle if it faces away)
+            n = np.array(t[4])
+            fn = np.cross(V[k, 1] - V[k, 0], V[k, 2] - V[k, 0])
+            if (n.mean(axis=0) * fn).sum() < 0:
+                fn = -fn
+            vn[k] = n if (n.mean(axis=0) * (eye - centers[k])).sum() >= 0 else -n
     cols = np.array([t[1] for t in tris], float)
     alphas = np.array([t[2] for t in tris], float)
     neon = np.array([t[3] for t in tris])
-    shade = ambient * (0.6 + 0.4 * sky) + (1 - ambient) * lam
-    shaded = cols * shade[:, None]
-    shaded[neon] = cols[neon]
+    lam = np.clip((vn * L).sum(axis=2), 0, 1)  # N,3
+    sky = 0.5 + 0.5 * vn[:, :, 1]
+    vshade = ambient * (0.6 + 0.4 * sky) + (1 - ambient) * lam  # N,3
+    vshade[neon] = 1.0
+    fogk = np.zeros(N)
     if fog:
         dist = np.linalg.norm(centers - eye, axis=1)
-        k = np.clip((dist - fog[0]) / (fog[1] - fog[0]), 0, 1)[:, None]
-        shaded = shaded * (1 - k) + np.array(fog[2], float) * k
-    shaded = np.clip(shaded, 0, 255)
+        fogk = np.clip((dist - fog[0]) / (fog[1] - fog[0]), 0, 1)
+    fogc = np.array(fog[2], float) if fog else np.zeros(3)
 
     near = 0.1
     # --- clip triangles against the near plane (triangles straddling it become 1-2 triangles) ---
@@ -189,7 +212,10 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
     else:
         cx, cy, cz = cx[keep], cy[keep], cz[keep]
         src = np.nonzero(keep)[0]
-    shaded = shaded[src]
+    # clipped fragments reuse the source triangle's vertex shades (first three entries of the source)
+    vshade = vshade[src]
+    cols = cols[src]
+    fogk = fogk[src]
     alphas = alphas[src]
     order = np.argsort(-cz.mean(axis=1))  # far to near
     sx = (cx / np.maximum(cz, near)) / (tanh * aspect) * (W / 2) + W / 2
@@ -225,7 +251,11 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
         if not m.any():
             return
         sub = img[miny:maxy + 1, minx:maxx + 1]
-        c = shaded[i].astype(np.float32)
+        sh = w0 * vshade[i][0] + w1 * vshade[i][1] + w2 * vshade[i][2]
+        c = np.clip(cols[i][None, :] * sh[m][:, None], 0, 255)
+        if fogk[i] > 0:
+            c = c * (1 - fogk[i]) + fogc * fogk[i]
+        c = c.astype(np.float32)
         if blend:
             a = alphas[i]
             sub[m] = sub[m] * (1 - a) + c * a

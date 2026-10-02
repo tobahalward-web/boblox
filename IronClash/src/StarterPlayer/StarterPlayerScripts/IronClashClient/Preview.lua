@@ -7,6 +7,7 @@ local Rig = require(Shared:WaitForChild("Rig"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local Moves = require(Shared:WaitForChild("Moves"))
 local Secondary = require(Shared:WaitForChild("Secondary"))
+local Life = require(Shared:WaitForChild("Life"))
 
 local Preview = {}
 Preview.__index = Preview
@@ -50,6 +51,7 @@ function Preview:setFighter(fighterId, palette)
 	self.model = model
 	self.info = Rig.measure(model)
 	self.sec = Secondary.new(model)
+	self.life = Life.new(model, 11)
 	self.fighterId = fighterId
 	self.t = 0
 	self.cam.CFrame = CFrame.lookAt(Vector3.new(0, 3.1, -12.5), Vector3.new(0, 2.7, 0))
@@ -86,6 +88,7 @@ function Preview:pose(dt, animate)
 	end
 	Rig.poseStatic(self.info, P, CFrame.new(0, self.info.hipCenter, 0) * CFrame.Angles(0, yaw, 0))
 	Secondary.step(self.sec, dt) -- hair / scarves / coat tails swing with the pose
+	Life.step(self.life, dt)
 	if self.kind == "head" then
 		local head = self.model:FindFirstChild("Head")
 		if head then

@@ -16,8 +16,8 @@ script sources in `IronClash/src` by `tools/build.py`, starting from `IronClash_
 - Floor markings use layered inlays so nothing z-fights (`tests/test_arenas.py` checks this).
 
 **Fighters** (`Shared/FighterModels.lua`, `Shared/Secondary.lua`)
-- Bodies are built from overlapping ellipsoids and tapered limbs rather than boxes/wedges.
-- Hair strands, ponytails, scarves, belt tails and coat tails follow through a spring/drag simulation (secondary motion).
+- Arms, legs and torso are smooth lathe-style forms (stacked elliptical discs following muscle profiles) with joint caps, proper fists, shaped shoes and plated armour; no boxes or bead-chains.
+- Fighters blink and flinch when hit (`Shared/Life.lua`). Hair strands, ponytails, scarves, belt tails and coat tails follow through a spring/drag simulation (secondary motion).
 
 **Combos** (`Shared/Moves.lua`, `Shared/FightControl.lua`, `ServerScriptService/.../MatchService.lua`)
 - The chain window now opens right after the hit and the server finishes a chained follow-up at the

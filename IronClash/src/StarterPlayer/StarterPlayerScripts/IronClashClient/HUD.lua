@@ -16,6 +16,23 @@ local FighterModels = require(Shared:WaitForChild("FighterModels"))
 local COL = UI.Colors
 
 local HUD = {}
+
+-- Fade a text label *and* its outline. A UIStroke ignores TextTransparency, so tweening the text alone
+-- leaves the black outline (and the words, in practice) stuck on screen.
+local function fadeText(label, transparency, dur)
+	local stroke = label:FindFirstChildOfClass("UIStroke")
+	if dur and dur > 0 then
+		UI.tween(label, dur, { TextTransparency = transparency })
+		if stroke then
+			UI.tween(stroke, dur, { Transparency = transparency })
+		end
+	else
+		label.TextTransparency = transparency
+		if stroke then
+			stroke.Transparency = transparency
+		end
+	end
+end
 HUD.__index = HUD
 
 local LEVEL_COLORS = {
@@ -481,15 +498,28 @@ function HUD:bind(folder, leftIdx, opts)
 		end
 	end
 	for _, c in ipairs(self.combos) do
-		c.hits.TextTransparency = 1
-		c.dmg.TextTransparency = 1
-		c.ch.TextTransparency = 1
+		c.hideAt, c.chHideAt = 0, 0
+		fadeText(c.hits, 1)
+		fadeText(c.dmg, 1)
+		fadeText(c.ch, 1)
 	end
+	self.announceToken = (self.announceToken or 0) + 1
+	fadeText(self.announceLabel, 1)
+	fadeText(self.sub, 1)
 	self.breakPrompt.Visible = false
 end
 
 function HUD:unbind()
 	self.folder = nil
+	self.announceToken = (self.announceToken or 0) + 1
+	fadeText(self.announceLabel, 1)
+	fadeText(self.sub, 1)
+	for _, c in ipairs(self.combos) do
+		c.hideAt, c.chHideAt = 0, 0
+		fadeText(c.hits, 1)
+		fadeText(c.dmg, 1)
+		fadeText(c.ch, 1)
+	end
 	self.gui.Enabled = false
 	self.moveList.Visible = false
 	self:letterbox(false)
@@ -503,6 +533,18 @@ function HUD:screenSideOf(idx)
 end
 
 function HUD:update(dt)
+	local now = os.clock() -- combo text must time out even when the match folder is already gone (KO)
+	for _, c in ipairs(self.combos) do
+		if c.hideAt > 0 and now > c.hideAt then
+			c.hideAt = 0
+			fadeText(c.hits, 1, 0.3)
+			fadeText(c.dmg, 1, 0.3)
+		end
+		if c.chHideAt > 0 and now > c.chHideAt then
+			c.chHideAt = 0
+			fadeText(c.ch, 1, 0.25)
+		end
+	end
 	local f = self.folder
 	if not f or not f.Parent then
 		return
@@ -555,20 +597,8 @@ function HUD:update(dt)
 	else
 		self.roundLabel.Text = "ROUND " .. tostring(round)
 	end
-	local now = os.clock()
-	for _, c in ipairs(self.combos) do
-		if c.hideAt > 0 and now > c.hideAt then
-			c.hideAt = 0
-			UI.tween(c.hits, 0.3, { TextTransparency = 1 })
-			UI.tween(c.dmg, 0.3, { TextTransparency = 1 })
-		end
-		if c.chHideAt > 0 and now > c.chHideAt then
-			c.chHideAt = 0
-			UI.tween(c.ch, 0.25, { TextTransparency = 1 })
-		end
-	end
 	if self.breakPrompt.Visible then
-		self.breakPrompt.TextTransparency = 0.3 * (0.5 + 0.5 * math.sin(now * 20))
+		self.breakPrompt.TextTransparency = 0.3 * (0.5 + 0.5 * math.sin(os.clock() * 20))
 	end
 end
 
@@ -578,20 +608,20 @@ function HUD:announce(text, sub, color, hold, style)
 	a.Text = text
 	self.announceGrad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), color or COL.gold)
 	self.announceScale.Scale = (style == "slam") and 3 or 1.8
-	a.TextTransparency = 1
-	UI.tween(a, 0.12, { TextTransparency = 0 })
+	fadeText(a, 1)
+	fadeText(a, 0, 0.12)
 	UI.tween(self.announceScale, (style == "slam") and 0.22 or 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
 	self.sub.Text = sub or ""
-	self.sub.TextTransparency = 1
+	fadeText(self.sub, 1)
 	if sub then
-		UI.tween(self.sub, 0.25, { TextTransparency = 0 })
+		fadeText(self.sub, 0, 0.25)
 	end
 	self.announceToken = (self.announceToken or 0) + 1
 	local token = self.announceToken
 	task.delay(hold or 1.2, function()
 		if self.announceToken == token then
-			UI.tween(a, 0.25, { TextTransparency = 1 })
-			UI.tween(self.sub, 0.25, { TextTransparency = 1 })
+			fadeText(a, 1, 0.25)
+			fadeText(self.sub, 1, 0.25)
 		end
 	end)
 end
@@ -603,8 +633,8 @@ function HUD:combo(attackerIdx, hits, dmg)
 	end
 	c.hits.Text = tostring(hits) .. " HITS"
 	c.dmg.Text = tostring(dmg) .. " DAMAGE"
-	c.hits.TextTransparency = 0
-	c.dmg.TextTransparency = 0
+	fadeText(c.hits, 0)
+	fadeText(c.dmg, 0)
 	c.hideAt = os.clock() + 1.4
 	local sc = c.hits:FindFirstChildOfClass("UIScale") or UI.new("UIScale", { Parent = c.hits })
 	sc.Scale = 1.35
@@ -613,7 +643,7 @@ end
 
 function HUD:counterHit(attackerIdx)
 	local c = self.combos[self:screenSideOf(attackerIdx)]
-	c.ch.TextTransparency = 0
+	fadeText(c.ch, 0)
 	c.chHideAt = os.clock() + 0.9
 end
 

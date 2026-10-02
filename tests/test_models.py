@@ -27,6 +27,7 @@ class Models(unittest.TestCase):
         cls.Poses = cls.g.module(SHARED + "Poses")
         cls.Moves = cls.g.module(SHARED + "Moves")
         cls.Sec = cls.g.module(SHARED + "Secondary")
+        cls.Life = cls.g.module(SHARED + "Life")
         cls.CF = cls.g.env.CFrame
 
     def roster(self):
@@ -108,6 +109,48 @@ class Models(unittest.TestCase):
             for pal in lua_list(f.palettes):
                 for key in ("skin", "hair", "eye", "top", "glow"):
                     self.assertIsNotNone(pal[key], f"{f.id}: palette missing {key}")
+
+    def test_eyes_blink(self):
+        for f in self.roster():
+            m = self.FM.build(f.id, 1, f.name)
+            life = self.Life.new(m, 3)
+            n = len(lua_list(life.lids))
+            if f.id in ("VEX", "GOR"):
+                self.assertEqual(n, 0, f"{f.id} has a visor/helmet, nothing to blink")
+                continue
+            self.assertEqual(n, 4, f"{f.id}: two eyes x (lid + lash)")
+            lids = lua_list(life.lids)
+            self.assertTrue(all(l.Transparency == 1 for l in lids), "eyes start open")
+            seen_closed = seen_open_after = False
+            for _ in range(600):  # 10 s at 60 fps
+                self.Life.step(life, 1 / 60)
+                closed = all(l.Transparency == 0 for l in lids)
+                seen_closed = seen_closed or closed
+                if seen_closed and not closed:
+                    seen_open_after = True
+            self.assertTrue(seen_closed and seen_open_after, f"{f.id} never blinked")
+            self.Life.squeeze(life, 0.3)
+            self.Life.step(life, 1 / 60)
+            self.assertTrue(all(l.Transparency == 0 for l in lids), "flinch closes the eyes")
+            self.Life.clear(life)
+            self.assertTrue(all(l.Transparency == 1 for l in lids))
+
+    def test_limbs_are_continuous_lathes(self):
+        """Arms and legs are stacks of overlapping discs: neighbours must overlap and step in width gently."""
+        for f in self.roster():
+            m = self.FM.build(f.id, 1, f.name)
+            for bone_name in ("LeftLowerArm", "RightUpperArm", "LeftUpperLeg", "RightLowerLeg"):
+                bone = m.FindFirstChild(m, bone_name)
+                discs = []
+                for c in lua_list(bone.GetChildren(bone)):
+                    if c.Name == "Vis" and c.Shape.Name == "Cylinder" and abs(c.CFrame.r[4]) > 0.99:
+                        discs.append((c.CFrame.p.Y, c.Size.X, c.Size.Y))
+                self.assertGreater(len(discs), 8, f"{f.id}/{bone_name} should be a stack of discs")
+                discs.sort()
+                for (y0, th0, w0), (y1, th1, w1) in zip(discs, discs[1:]):
+                    if y1 - y0 < 1e-6:
+                        continue
+                    self.assertLess(y1 - y0, th0 / 2 + th1 / 2, f"{f.id}/{bone_name}: gap between discs")
 
 
 class SecondaryMotion(unittest.TestCase):
