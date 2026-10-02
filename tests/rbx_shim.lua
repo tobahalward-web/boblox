@@ -656,7 +656,8 @@ shim.Instance = { new = instNew }
 local Terrain = rawInst("Folder")
 Terrain._props.Name = "Terrain"
 rawset(Terrain, "calls", {})
-for _, fn in ipairs({ "FillBlock", "FillBall", "FillCylinder", "FillWedge", "FillRegion", "Clear" }) do
+rawset(Terrain, "_cls", "Terrain")
+for _, fn in ipairs({ "FillBlock", "FillBall", "FillCylinder", "FillWedge", "FillRegion", "Clear", "WriteVoxels" }) do
 	rawset(Terrain, fn, function(self, ...)
 		Terrain.calls[#Terrain.calls + 1] = { fn, ... }
 	end)

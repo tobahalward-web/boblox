@@ -120,7 +120,7 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
     t = np.linspace(0, 1, H)[:, None, None]
     img = (top * (1 - t) + bot * t) * np.ones((H, W, 3))
     img = img.astype(np.float32)
-    zbuf = np.full((H, W), np.inf, np.float32)
+    zbuf = np.zeros((H, W), np.float32)  # stores 1/z (bigger = nearer)
     L = _unit(np.array(light, float))
 
     tris = scene.tris
@@ -158,14 +158,44 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
         shaded = shaded * (1 - k) + np.array(fog[2], float) * k
     shaded = np.clip(shaded, 0, 255)
 
-    order = np.argsort(-cz.mean(axis=1))  # far to near
     near = 0.1
+    # --- clip triangles against the near plane (triangles straddling it become 1-2 triangles) ---
+    behind = cz < near
+    nb = behind.sum(axis=1)
+    keep = nb == 0
+    extra_x, extra_y, extra_z, extra_src = [], [], [], []
+    for i in np.nonzero((nb > 0) & (nb < 3))[0]:
+        pts = [(cx[i][k], cy[i][k], cz[i][k]) for k in range(3)]
+        poly = []
+        for k in range(3):
+            a, b = pts[k], pts[(k + 1) % 3]
+            ina, inb = a[2] >= near, b[2] >= near
+            if ina:
+                poly.append(a)
+            if ina != inb:
+                t = (near - a[2]) / (b[2] - a[2])
+                poly.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, near))
+        for k in range(1, len(poly) - 1):
+            tri = (poly[0], poly[k], poly[k + 1])
+            extra_x.append([t[0] for t in tri])
+            extra_y.append([t[1] for t in tri])
+            extra_z.append([t[2] for t in tri])
+            extra_src.append(i)
+    if extra_src:
+        cx = np.concatenate([cx[keep], np.array(extra_x)])
+        cy = np.concatenate([cy[keep], np.array(extra_y)])
+        cz = np.concatenate([cz[keep], np.array(extra_z)])
+        src = np.concatenate([np.nonzero(keep)[0], np.array(extra_src)])
+    else:
+        cx, cy, cz = cx[keep], cy[keep], cz[keep]
+        src = np.nonzero(keep)[0]
+    shaded = shaded[src]
+    alphas = alphas[src]
+    order = np.argsort(-cz.mean(axis=1))  # far to near
     sx = (cx / np.maximum(cz, near)) / (tanh * aspect) * (W / 2) + W / 2
     sy = H / 2 - (cy / np.maximum(cz, near)) / tanh * (H / 2)
     opaque, transparent = [], []
     for i in order:
-        if (cz[i] < near).any():
-            continue
         (opaque if alphas[i] >= 0.99 else transparent).append(i)
 
     def raster(i, blend):
@@ -189,9 +219,9 @@ def render(scene, eye, target, fov=40.0, size=(900, 700), bg=((30, 34, 60), (120
         m = (w0 >= 0) & (w1 >= 0) & (w2 >= 0)
         if not m.any():
             return
-        z = w0 * cz[i][0] + w1 * cz[i][1] + w2 * cz[i][2]
+        z = w0 / cz[i][0] + w1 / cz[i][1] + w2 / cz[i][2]
         zb = zbuf[miny:maxy + 1, minx:maxx + 1]
-        m &= z < zb
+        m &= z > zb
         if not m.any():
             return
         sub = img[miny:maxy + 1, minx:maxx + 1]
