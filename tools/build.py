@@ -6,6 +6,8 @@
 <tree-dir> contains place.rbxlx.tmpl and src/**.lua (see tools/extract.py).
 
 * Every {{SCRIPT:path}} marker in the template is replaced by that file's contents.
+* IronClash/assets/FighterAssets.xml (from tools/import_assets.py) is inserted as
+  ReplicatedStorage/FighterAssets.
 * Any .lua file under src/ that the template does not mention is a NEW script: it is inserted as a
   Script / LocalScript / ModuleScript item (chosen from the file suffix) under the instance whose
   path matches the file's directory.  A directory named like a script file holds that script's
@@ -96,6 +98,18 @@ def main(tree, out):
         inserts.append((line_start, xml))
     for pos, xml in sorted(inserts, key=lambda x: -x[0]):
         text = text[:pos] + xml + text[pos:]
+
+    # ---- fighter body models (tools/import_assets.py) -------------------------------------
+    assets = tree / "assets" / "FighterAssets.xml"
+    if assets.exists():
+        if "ReplicatedStorage" not in items:
+            raise SystemExit("no ReplicatedStorage in the place template")
+        a_xml = assets.read_text(encoding="utf-8").strip() + "\n"
+        # scan_items positions are stale after the script inserts, so find ReplicatedStorage again
+        items2 = scan_items(text)
+        _, close_pos, _ = items2["ReplicatedStorage"]
+        line_start = text.rfind("\n", 0, close_pos) + 1
+        text = text[:line_start] + a_xml + text[line_start:]
 
     # ---- existing script bodies --------------------------------------------------------
     def sub(m):

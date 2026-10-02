@@ -194,6 +194,7 @@ end
 -- neon silhouette afterimages that trail behind big moves
 local GHOST_PARTS = {
 	"Head", "Jaw", "UpperTorso", "MidTorso", "LowerTorso", "LeftClavicle", "RightClavicle", "LeftToes", "RightToes", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
+	"Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", -- classic R6 bodies
 	"RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot",
 }
 

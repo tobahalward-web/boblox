@@ -14,10 +14,10 @@ local Animator = {}
 Animator.__index = Animator
 
 local LIMBS = {
-	lh = { "LeftHand", Vector3.new(0, 0.12, 0), Vector3.new(0, -0.22, 0) },
-	rh = { "RightHand", Vector3.new(0, 0.12, 0), Vector3.new(0, -0.22, 0) },
-	lf = { "LeftFoot", Vector3.new(0, 0, -0.35), Vector3.new(0, 0, 0.3) },
-	rf = { "RightFoot", Vector3.new(0, 0, -0.35), Vector3.new(0, 0, 0.3) },
+	lh = { "LeftHand", Vector3.new(0, 0.12, 0), Vector3.new(0, -0.22, 0), "Left Arm", Vector3.new(0, -0.6, 0), Vector3.new(0, -1.0, 0) },
+	rh = { "RightHand", Vector3.new(0, 0.12, 0), Vector3.new(0, -0.22, 0), "Right Arm", Vector3.new(0, -0.6, 0), Vector3.new(0, -1.0, 0) },
+	lf = { "LeftFoot", Vector3.new(0, 0, -0.35), Vector3.new(0, 0, 0.3), "Left Leg", Vector3.new(0, -0.8, 0), Vector3.new(0, -1.0, 0) },
+	rf = { "RightFoot", Vector3.new(0, 0, -0.35), Vector3.new(0, 0, 0.3), "Right Leg", Vector3.new(0, -0.8, 0), Vector3.new(0, -1.0, 0) },
 }
 
 function Animator.new()
@@ -59,14 +59,19 @@ local function makeTrails(char, color)
 	local trails = {}
 	for key, def in pairs(LIMBS) do
 		local part = char:FindFirstChild(def[1])
+		local p2, p3 = def[2], def[3]
+		if not part then
+			-- classic R6 bodies: one rigid limb part instead of hand / foot parts
+			part, p2, p3 = char:FindFirstChild(def[4]), def[5], def[6]
+		end
 		if part then
 			local a0 = Instance.new("Attachment")
 			a0.Name = "IC_TrailA"
-			a0.Position = def[2]
+			a0.Position = p2
 			a0.Parent = part
 			local a1 = Instance.new("Attachment")
 			a1.Name = "IC_TrailB"
-			a1.Position = def[3]
+			a1.Position = p3
 			a1.Parent = part
 			local tr = Instance.new("Trail")
 			tr.Name = "IC_Trail"

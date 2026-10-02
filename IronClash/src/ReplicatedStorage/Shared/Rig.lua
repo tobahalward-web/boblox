@@ -38,6 +38,16 @@ local JOINTS = {
 }
 Rig.JOINTS = JOINTS
 
+-- classic R6 bodies: one rigid part per limb, so no elbows, knees or ankles
+local JOINTS6 = {
+	root = { "Torso", "RootJoint" },
+	neck = { "Head", "Neck" },
+	ls = { "Left Arm", "Left Shoulder" },
+	rs = { "Right Arm", "Right Shoulder" },
+	lh = { "Left Leg", "Left Hip" },
+	rh = { "Right Leg", "Right Hip" },
+}
+
 -- original C0 of every Motor6D we touch (we overwrite C0 while animating)
 local BASE_C0 = setmetatable({}, { __mode = "k" })
 
@@ -102,7 +112,9 @@ function Rig.measure(char)
 		return nil, "no HumanoidRootPart"
 	end
 	local info = { char = char, root = root, m = {}, j = {}, r0 = {}, r0i = {} }
-	for key, def in pairs(JOINTS) do
+	local r6 = char:FindFirstChild("Torso") ~= nil and char:FindFirstChild("LowerTorso") == nil
+	info.r6 = r6
+	for key, def in pairs(r6 and JOINTS6 or JOINTS) do
 		local j = findJoint(char, def[1], def[2])
 		if j then
 			info.j[key] = j
@@ -123,9 +135,9 @@ function Rig.measure(char)
 		end
 	end
 	local J = info.j
-	for _, key in ipairs({ "root", "lh", "lk", "la", "rh", "rk", "ra" }) do
+	for _, key in ipairs(r6 and { "root", "lh", "rh" } or { "root", "lh", "lk", "la", "rh", "rk", "ra" }) do
 		if not J[key] then
-			return nil, "missing joint " .. JOINTS[key][2]
+			return nil, "missing joint " .. (r6 and JOINTS6 or JOINTS)[key][2]
 		end
 	end
 
@@ -153,6 +165,20 @@ function Rig.measure(char)
 			ankleY = ankleJ.Position.Y,
 			sole = sole,
 		}
+	end
+	if r6 then
+		local function legChain6(hip)
+			local len = hip.part1.Size.Y
+			local hipPos = hip.C0.Position
+			return { hipPos = hipPos, len = len, thigh = len / 2, shin = len / 2, ankleH = 0, bottom = (lt * hipPos).Y - len }
+		end
+		info.L = legChain6(J.lh)
+		info.R = legChain6(J.rh)
+		info.ground = math.min(info.L.bottom, info.R.bottom)
+		info.hipCenter = -info.ground
+		info.rootJointH = J.root.C0.Position.Y - info.ground
+		info.scale = math.max(info.L.len / 2, 0.1)
+		return info
 	end
 	info.L = legChain(J.lh, J.lk, J.la)
 	info.R = legChain(J.rh, J.rk, J.ra)
@@ -235,9 +261,84 @@ local function solveLeg(info, leg, ltCF, target, footYaw, footPitch)
 end
 
 -- P: full pose table (see Poses.DEFAULT for keys)
+-- R6: rigid limbs. Shoulders and neck use the pose angles; each leg is a straight bar aimed from the hip at
+-- the foot target, and the hips are raised or lowered so that bar ends on the floor.
+local function applyR6(info, P)
+	local s = info.scale
+	local lie = (P.ly or 0) * (info.rootJointH - 0.5 * s)
+	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx), rad(P.ry), rad(P.rz))
+	local ground = info.ground
+
+	local function torsoCF(rt)
+		local actual = info.r0i.root * rt * info.r0.root
+		return info.rootC0 * actual * info.rootC1i
+	end
+	local sides = {
+		{ leg = info.L, w = P.lik, fx = P.lfx, fz = P.lfz, fy = P.lfy, fr = P.lfr, hx = P.lhx, hy = P.lhy, hz = P.lhz, key = "lh" },
+		{ leg = info.R, w = P.rik, fx = P.rfx, fz = P.rfz, fy = P.rfy, fr = P.rfr, hx = P.rhx, hy = P.rhy, hz = P.rhz, key = "rh" },
+	}
+	-- raise / lower the hips so a straight leg reaches each planted foot
+	if (P.ly or 0) < 0.01 then
+		local ltCF = torsoCF(rootT)
+		local want
+		for _, sd in ipairs(sides) do
+			if sd.w > 0.5 then
+				local hipWorld = ltCF * sd.leg.hipPos
+				local target = Vector3.new(sd.fx * s, ground + sd.fy * s, sd.fz * s)
+				local dx, dz = target.X - hipWorld.X, target.Z - hipWorld.Z
+				local need = math.sqrt(math.max(sd.leg.len * sd.leg.len - dx * dx - dz * dz, (0.2 * sd.leg.len) ^ 2))
+				local y = target.Y + need
+				if not want or y > want then
+					want = y
+				end
+			end
+		end
+		if want then
+			local first = ltCF * sides[1].leg.hipPos
+			rootT = CFrame.new(0, want - first.Y, 0) * rootT
+		end
+	end
+	setJoint(info, "root", rootT)
+	setJoint(info, "neck", fromYXZ(rad(P.nx), rad(P.ny), rad(P.nz)))
+	setJoint(info, "ls", fromYXZ(rad(P.lsx), rad(P.lsy), rad(P.lsz)))
+	setJoint(info, "rs", fromYXZ(rad(P.rsx), rad(P.rsy), rad(P.rsz)))
+
+	local ltCF = torsoCF(rootT)
+	local ltRot = ltCF.Rotation
+	for _, sd in ipairs(sides) do
+		local hipT = fromYXZ(rad(sd.hx), rad(sd.hy), rad(sd.hz))
+		if sd.w > 0.001 then
+			local hipWorld = ltCF * sd.leg.hipPos
+			local target = Vector3.new(sd.fx * s, ground + sd.fy * s, sd.fz * s)
+			local v = target - hipWorld
+			if v.Magnitude > 1e-3 then
+				local dl = ltRot:VectorToObjectSpace(v.Unit)
+				local rest = Vector3.new(0, -1, 0)
+				local axis = rest:Cross(dl)
+				local ang = math.acos(math.clamp(rest:Dot(dl), -1, 1))
+				local aim = CFrame.new()
+				if axis.Magnitude > 1e-4 then
+					aim = CFrame.fromAxisAngle(axis.Unit, ang)
+				end
+				local twist = CFrame.Angles(0, rad(sd.fr), 0) -- toes turn out about the leg's own axis
+				local ikT = aim * twist
+				if sd.w >= 0.999 then
+					hipT = ikT
+				else
+					hipT = hipT:Lerp(ikT, sd.w)
+				end
+			end
+		end
+		setJoint(info, sd.key, hipT)
+	end
+end
+
 function Rig.apply(info, P)
 	if not info then
 		return
+	end
+	if info.r6 then
+		return applyR6(info, P)
 	end
 	local s = info.scale
 	-- `ly` (0..1) lays the body flat on the floor (knockdowns)

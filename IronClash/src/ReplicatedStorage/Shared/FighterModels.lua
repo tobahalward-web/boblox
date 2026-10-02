@@ -11,6 +11,8 @@
 -- "secondary motion" chains: extra bones that Shared/Secondary simulates every frame, so they swing,
 -- lag and settle as the fighter moves.
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local FighterModels = {}
 
 local C = Color3.fromRGB
@@ -866,7 +868,7 @@ end
 ------------------------------------------------------------------------------------------
 local ROSTER = {
 	{
-		id = "KAI", name = "KAI", title = "THE ORANGE STORM",
+		id = "KAI", asset = "NARUTO", name = "KAI", title = "THE ORANGE STORM",
 		bio = "A loud, never-quit ninja with a forehead protector and a fox's grin.",
 		palettes = {
 			{ skin = C(240, 200, 168), hair = C(250, 214, 60), eye = C(70, 150, 240), top = C(246, 128, 32), trim = C(28, 34, 60),
@@ -892,7 +894,7 @@ local ROSTER = {
 		style = { hairScale = 1.15, auraRate = 8, hairStyle = "ponytail", jacket = "crop", sleeves = "short", brows = "calm", bulk = 0.92, smirk = -3 },
 	},
 	{
-		id = "RYOJI", name = "RYOJI", title = "THE CURSED KING",
+		id = "RYOJI", asset = "SUKUNA", name = "RYOJI", title = "THE CURSED KING",
 		bio = "A smiling tyrant with pink hair and black markings who treats every fight as a feast.",
 		palettes = {
 			{ skin = C(232, 188, 156), hair = C(246, 150, 170), eye = C(200, 40, 50), top = C(232, 188, 156), trim = C(240, 240, 236),
@@ -905,7 +907,7 @@ local ROSTER = {
 		style = { hairScale = 1.25, beads = C(236, 232, 224), auraRate = 14, hairStyle = "spiky", jacket = "vest", sleeves = "none", pantsStyle = "gi", brows = "angry", bulk = 1.2, smirk = 12 },
 	},
 	{
-		id = "VEX", name = "VEX", title = "NEON PHANTOM",
+		id = "VEX", asset = "GOJO", name = "VEX", title = "NEON PHANTOM",
 		bio = "Cold, flashy, and always three moves ahead.",
 		palettes = {
 			{ skin = C(232, 200, 180), hair = C(232, 232, 242), accent = C(80, 220, 255), eye = C(80, 220, 255), top = C(26, 30, 52), trim = C(34, 30, 44),
@@ -916,7 +918,7 @@ local ROSTER = {
 		style = { hairScale = 1.3, auraRate = 14, hairStyle = "slick", jacket = "coat", sleeves = "long", face = "visor", brows = "calm", glowGloves = true },
 	},
 	{
-		id = "NOVA", name = "NOVA", title = "THE SKY WARRIOR",
+		id = "NOVA", asset = "GOKU", name = "NOVA", title = "THE SKY WARRIOR",
 		bio = "A cheerful powerhouse in a battle gi who gets stronger the harder you hit him.",
 		palettes = {
 			{ skin = C(238, 198, 164), hair = C(22, 22, 28), eye = C(40, 40, 52), top = C(248, 132, 30), trim = C(30, 80, 170),
@@ -929,7 +931,7 @@ local ROSTER = {
 		style = { hairScale = 1.45, auraRate = 16, hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 8, bulk = 1.08 },
 	},
 	{
-		id = "GOR", name = "GOR", title = "THE SCOUT",
+		id = "GOR", asset = "LUFFY", name = "GOR", title = "THE SCOUT",
 		bio = "A furious young soldier in a green cloak, strapped into his gear and out for blood.",
 		palettes = {
 			{ skin = C(236, 196, 164), hair = C(84, 58, 40), eye = C(50, 190, 130), top = C(238, 236, 228), trim = C(196, 170, 100),
@@ -986,6 +988,19 @@ end
 -- Builds the fighter model (unparented). PrimaryPart = HumanoidRootPart.
 function FighterModels.build(id, palette, displayName)
 	local def = BY_ID[id] or ROSTER[1]
+	if def.asset then
+		-- an imported body model (ReplicatedStorage/FighterAssets); the procedural body below is the fallback
+		local ok, IF = pcall(function()
+			return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ImportedFighters"))
+		end)
+		if ok and IF then
+			local m = IF.build(def, displayName)
+			if m then
+				m:SetAttribute("Palette", palette or 1)
+				return m
+			end
+		end
+	end
 	local pal = def.palettes[palette or 1] or def.palettes[1]
 	local look = {}
 	for k, v in pairs(def.style) do

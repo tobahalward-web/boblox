@@ -52,3 +52,15 @@ python3 -m unittest discover -s tests                     # headless tests (need
 
 `docs/previews` holds software-rendered previews of the four arenas. They approximate geometry and
 terrain only; lighting, materials and post-processing will look different in Studio.
+
+## Imported fighter bodies
+
+`ReplicatedStorage/FighterAssets` holds ready-made character models. A roster entry with `asset = "NAME"`
+in `Shared/FighterModels.lua` is built from that model by `Shared/ImportedFighters` (the procedural body is
+the fallback if the asset is missing). R6 bodies are re-rigged with standard R6 joints and driven by the R6
+mode in `Shared/Rig`; R15 bodies keep their own joints. To refresh the assets from a place file:
+
+```
+python3 tools/import_assets.py <place.rbxlx>      # writes IronClash/assets/FighterAssets.xml
+python3 tools/build.py IronClash IronClash_6.rbxlx
+```
