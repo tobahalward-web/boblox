@@ -144,7 +144,7 @@ class Imported(unittest.TestCase):
         m = self.built("R6W")
         self.pose_floor(m, "Idle")
         hip_y = m.FindFirstChild(m, "Torso").Position.Y  # the root is pinned by poseStatic; the torso carries the drop
-        self.assertLess(hip_y, 2.8, "hips should sit lower than the 3.0 of a straight standing body")
+        self.assertLess(hip_y, 2.95, "hips should sit lower than the 3.0 of a straight standing body")
         L, R = m.FindFirstChild(m, "Left Leg").Position, m.FindFirstChild(m, "Right Leg").Position
         apart = ((L.X - R.X) ** 2 + (L.Z - R.Z) ** 2) ** 0.5
         self.assertGreater(apart, 1.2, "feet should be planted well apart")

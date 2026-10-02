@@ -1494,7 +1494,7 @@ local function applyR6(info, P)
 	-- (feet further apart front-to-back and side-to-side) with the body leaning into it. The deeper the
 	-- pose crouches (more negative py), the wider the stride gets.
 	local depth = math.max(0, -(P.py + 0.32))
-	local spread = 2.8 + depth * 1.2
+	local spread = 2.5 + depth * 1.2
 	local lean = (spread - 1) * 5
 	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx - lean * (1 - (P.ly or 0))), rad(P.ry), rad(P.rz))
 	local ground = info.ground
@@ -1544,8 +1544,17 @@ local function applyR6(info, P)
 	end
 	setJoint(info, "root", rootT)
 	setJoint(info, "neck", fromYXZ(rad(P.nx), rad(P.ny), rad(P.nz)))
-	setJoint(info, "ls", fromYXZ(rad(P.lsx), rad(P.lsy), rad(P.lsz)))
-	setJoint(info, "rs", fromYXZ(rad(P.rsx), rad(P.rsy), rad(P.rsz)))
+	-- A rigid arm cannot fold at the elbow, so a guard (elbow bent) is faked: the arm is lowered and swung
+	-- in across the chest in proportion to how bent the pose's elbow is. A straight punch (elbow ~0) keeps
+	-- the full shoulder angle.
+	local function arm(sx, sy, sz, ex, side)
+		local bend = math.clamp((ex or 0) / 110, 0, 1)
+		local pitch = sx * (1 - 0.55 * bend)
+		local across = 38 * bend
+		return fromYXZ(rad(pitch), rad(sy), rad(sz + side * across))
+	end
+	setJoint(info, "ls", arm(P.lsx, P.lsy, P.lsz, P.lex, 1))
+	setJoint(info, "rs", arm(P.rsx, P.rsy, P.rsz, P.rex, -1))
 
 	local ltCF = torsoCF(rootT)
 	local ltRot = ltCF.Rotation
