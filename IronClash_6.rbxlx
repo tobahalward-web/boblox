@@ -1394,7 +1394,7 @@ function Rig.measure(char)
 		local function legChain6(hip)
 			local len = hip.part1.Size.Y
 			local hipPos = hip.C0.Position
-			return { hipPos = hipPos, len = len, thigh = len / 2, shin = len / 2, ankleH = 0, bottom = (lt * hipPos).Y - len }
+			return { hipPos = hipPos, len = len, width = hip.part1.Size.X, thigh = len / 2, shin = len / 2, ankleH = 0, bottom = (lt * hipPos).Y - len }
 		end
 		info.L = legChain6(J.lh)
 		info.R = legChain6(J.rh)
@@ -1490,9 +1490,29 @@ end
 local function applyR6(info, P)
 	local s = info.scale
 	local lie = (P.ly or 0) * (info.rootJointH - 0.5 * s)
-	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx), rad(P.ry), rad(P.rz))
+	-- A rigid leg cannot bend a knee, so the stance is made by spreading the feet: a wide, low A-frame
+	-- (feet further apart front-to-back and side-to-side) with the body leaning into it. The deeper the
+	-- pose crouches (more negative py), the wider the stride gets.
+	local depth = math.max(0, -(P.py + 0.32))
+	local spread = 2.8 + depth * 1.2
+	local lean = (spread - 1) * 5
+	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx - lean * (1 - (P.ly or 0))), rad(P.ry), rad(P.rz))
 	local ground = info.ground
 
+	-- keep a foot target within what a straight leg can reach from its hip (0.92 of its length, sideways)
+	-- A tilted bar's flat end dips at its low corner by about half its width times the tilt, so the end
+	-- centre is lifted by that much and the corner (not the centre) is what rests on the floor.
+	local function reachable(target, hipWorld, len, width)
+		local dx, dz = target.X - hipWorld.X, target.Z - hipWorld.Z
+		local d = math.sqrt(dx * dx + dz * dz)
+		local maxD = 0.92 * len
+		local k = 1
+		if d > maxD then
+			k = maxD / d
+			d = maxD
+		end
+		return Vector3.new(hipWorld.X + dx * k, target.Y + 0.5 * width * (d / len), hipWorld.Z + dz * k)
+	end
 	local function torsoCF(rt)
 		local actual = info.r0i.root * rt * info.r0.root
 		return info.rootC0 * actual * info.rootC1i
@@ -1508,7 +1528,7 @@ local function applyR6(info, P)
 		for _, sd in ipairs(sides) do
 			if sd.w > 0.5 then
 				local hipWorld = ltCF * sd.leg.hipPos
-				local target = Vector3.new(sd.fx * s, ground + sd.fy * s, sd.fz * s)
+				local target = reachable(Vector3.new(sd.fx * s * spread, ground + sd.fy * s, sd.fz * s * spread), hipWorld, sd.leg.len, sd.leg.width)
 				local dx, dz = target.X - hipWorld.X, target.Z - hipWorld.Z
 				local need = math.sqrt(math.max(sd.leg.len * sd.leg.len - dx * dx - dz * dz, (0.2 * sd.leg.len) ^ 2))
 				local y = target.Y + need
@@ -1533,7 +1553,7 @@ local function applyR6(info, P)
 		local hipT = fromYXZ(rad(sd.hx), rad(sd.hy), rad(sd.hz))
 		if sd.w > 0.001 then
 			local hipWorld = ltCF * sd.leg.hipPos
-			local target = Vector3.new(sd.fx * s, ground + sd.fy * s, sd.fz * s)
+			local target = reachable(Vector3.new(sd.fx * s * spread, ground + sd.fy * s, sd.fz * s * spread), hipWorld, sd.leg.len, sd.leg.width)
 			local v = target - hipWorld
 			if v.Magnitude > 1e-3 then
 				local dl = ltRot:VectorToObjectSpace(v.Unit)
@@ -3688,19 +3708,6 @@ local ROSTER = {
 		style = { hairScale = 1.3, scroll = C(236, 226, 196), pouch = C(96, 70, 48), auraRate = 12, hairStyle = "spiky", jacket = "crop", sleeves = "long", pantsStyle = "gi", brows = "angry", smirk = 10, whiskers = true, bulk = 1.0 },
 	},
 	{
-		id = "AYAME", name = "AYAME", title = "SILVER CRANE",
-		bio = "Fast, precise and impossible to pin down.",
-		palettes = {
-			{ skin = C(244, 208, 184), hair = C(206, 196, 236), eye = C(150, 110, 230), top = C(30, 40, 84), trim = C(232, 190, 80),
-				inner = C(244, 244, 248), inner2 = C(244, 244, 248), pants = C(240, 240, 246), shoes = C(30, 40, 84), belt = C(232, 190, 80), emblem = C(232, 190, 80),
-				bracer = C(220, 180, 80), glow = C(255, 210, 110), scarf = C(190, 40, 60) },
-			{ skin = C(244, 208, 184), hair = C(30, 30, 40), eye = C(220, 60, 90), top = C(150, 26, 44), trim = C(240, 240, 240),
-				inner = C(30, 30, 36), inner2 = C(30, 30, 36), pants = C(36, 36, 44), shoes = C(150, 26, 44), belt = C(240, 240, 240),
-				bracer = C(200, 200, 210), glow = C(255, 120, 150), scarf = C(240, 240, 240) },
-		},
-		style = { hairScale = 1.15, auraRate = 8, hairStyle = "ponytail", jacket = "crop", sleeves = "short", brows = "calm", bulk = 0.92, smirk = -3 },
-	},
-	{
 		id = "RYOJI", asset = "SUKUNA", name = "RYOJI", title = "THE CURSED KING",
 		bio = "A smiling tyrant with pink hair and black markings who treats every fight as a feast.",
 		palettes = {
@@ -3749,22 +3756,6 @@ local ROSTER = {
 				glow = C(255, 100, 90), cape = C(130, 36, 44), harness = C(40, 40, 46) },
 		},
 		style = { hairScale = 1.1, hipBlades = C(196, 204, 214), pouch = C(96, 66, 44), auraRate = 8, hairStyle = "messy", jacket = "crop", sleeves = "long", brows = "angry", bulk = 1.05, smirk = -6 },
-	},
-	{
-		id = "FENRA", name = "FENRA", title = "THE MOON WOLF",
-		bio = "A wolf spirit with a rigged tail and ears that flick with every move. Fast, feral and hard to read.",
-		palettes = {
-			{ skin = C(228, 190, 160), hair = C(210, 214, 226), eye = C(250, 210, 70), top = C(40, 44, 66), trim = C(120, 190, 255),
-				inner = C(210, 214, 226), inner2 = C(210, 214, 226), pants = C(40, 44, 66), belt = C(120, 190, 255), shoes = C(30, 32, 46),
-				wraps = C(210, 214, 226), glow = C(130, 200, 255), fur = C(210, 214, 226), furInner = C(244, 244, 250), tailTip = C(120, 190, 255),
-				claws = C(236, 240, 250), markings = C(90, 140, 200) },
-			{ skin = C(214, 172, 140), hair = C(70, 54, 46), eye = C(120, 255, 170), top = C(70, 30, 24), trim = C(255, 170, 70),
-				inner = C(70, 54, 46), inner2 = C(70, 54, 46), pants = C(70, 30, 24), belt = C(255, 170, 70), shoes = C(40, 24, 20),
-				wraps = C(70, 54, 46), glow = C(255, 180, 80), fur = C(70, 54, 46), furInner = C(150, 110, 84), tailTip = C(255, 170, 70),
-				claws = C(240, 220, 190), markings = C(255, 170, 70) },
-		},
-		style = { hairStyle = "wolf", jacket = "crop", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 14, hairScale = 1.2,
-			ears = true, tail = true, mane = true, claws = true, auraRate = 12, bulk = 1.0 },
 	},
 }
 

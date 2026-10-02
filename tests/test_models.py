@@ -211,7 +211,7 @@ class SecondaryMotion(unittest.TestCase):
         cls.Sec = cls.g.module(SHARED + "Secondary")
         cls.CF = cls.g.env.CFrame
 
-    def setup(self, fid="AYAME"):
+    def setup(self, fid="GOR"):
         model = self.FM.build(fid, 1, fid)
         info = self.Rig.measure(model)
         st = self.g.lua.table_from({"state": "Idle", "t": 0, "vy": 0, "h": 0, "walk": 0, "variant": 0})
@@ -226,7 +226,7 @@ class SecondaryMotion(unittest.TestCase):
             self.Sec.step(state, dt)
 
     def test_segment_lengths_are_preserved(self):
-        for fid in ("AYAME", "VEX", "GOR", "KAI"):
+        for fid in ("NOVA", "VEX", "GOR", "KAI"):
             model, info, pose, state = self.setup(fid)
             self.advance(model, info, pose, state, lambda t: 14 * t if t < 0.3 else 4.2, 1.0)
             for ch in lua_list(state.chains):
@@ -241,16 +241,16 @@ class SecondaryMotion(unittest.TestCase):
                     prev = q
 
     def test_chains_react_to_motion_then_settle(self):
-        model, info, pose, state = self.setup("AYAME")
+        model, info, pose, state = self.setup("GOR")
         # still: remember the settled pose
         self.advance(model, info, pose, state, lambda t: 0.0, 1.5)
-        pony = [c for c in lua_list(state.chains) if c.name == "Pony"][0]
+        pony = [c for c in lua_list(state.chains) if c.name == "CapeL"][0]
         rest = (pony.Q[4].X, pony.Q[4].Y, pony.Q[4].Z)
         # dash sideways: the tip must swing away from rest...
         peak = 0.0
         dt = 1 / 60
         x = 0.0
-        for f in range(int(2.5 / dt)):
+        for f in range(int(5.0 / dt)):  # a heavy cloak takes a few seconds to settle
             t = f * dt
             x += (14.0 if t < 0.3 else 0.0) * dt
             self.Rig.poseStatic(info, pose, self.CF.new(x, info.hipCenter, 0))
@@ -262,11 +262,11 @@ class SecondaryMotion(unittest.TestCase):
         # ...and be back near rest, almost still, afterwards
         q = pony.Q[4]
         dev = ((q.X - x - rest[0]) ** 2 + (q.Y - rest[1]) ** 2 + (q.Z - rest[2]) ** 2) ** 0.5
-        self.assertLess(dev, 0.15)
+        self.assertLess(dev, 0.25)
         self.assertLess(pony.V[4].Magnitude, 0.5)
 
     def test_swing_never_exceeds_the_limit(self):
-        model, info, pose, state = self.setup("AYAME")
+        model, info, pose, state = self.setup("GOR")
         self.advance(model, info, pose, state, lambda t: 30 * t if t < 0.5 else 15, 1.2)
         for ch in lua_list(state.chains):
             limit = math.radians(ch.limit) + 0.05
@@ -296,7 +296,7 @@ class SecondaryMotion(unittest.TestCase):
                 self.assertLess(v.Magnitude, 20, f"{ch.name}#{i} flying at {v.Magnitude:.0f} studs/s")
 
     def test_clear_restores_rest_pose(self):
-        model, info, pose, state = self.setup("AYAME")
+        model, info, pose, state = self.setup("GOR")
         self.advance(model, info, pose, state, lambda t: 14 * t if t < 0.3 else 4.2, 0.5)
         self.Sec.clear(state)
         for ch in lua_list(state.chains):

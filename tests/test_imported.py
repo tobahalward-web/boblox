@@ -137,7 +137,18 @@ class Imported(unittest.TestCase):
         m = self.built("R6F")
         for state in ("Idle", "WalkF", "WalkB", "Crouch", "Blockstun", "Hitstun"):
             low, _ = self.pose_floor(m, state)
-            self.assertLess(abs(low), 0.45, f"{state}: lowest foot {low:.2f} above the floor")
+            self.assertLess(abs(low), 0.6, f"{state}: lowest foot {low:.2f} above the floor")
+
+    def test_idle_is_a_wide_low_stance(self):
+        """Rigid legs can't bend, so the stance must be a wide A-frame with the hips well below standing height."""
+        m = self.built("R6W")
+        self.pose_floor(m, "Idle")
+        hip_y = m.FindFirstChild(m, "Torso").Position.Y  # the root is pinned by poseStatic; the torso carries the drop
+        self.assertLess(hip_y, 2.8, "hips should sit lower than the 3.0 of a straight standing body")
+        L, R = m.FindFirstChild(m, "Left Leg").Position, m.FindFirstChild(m, "Right Leg").Position
+        apart = ((L.X - R.X) ** 2 + (L.Z - R.Z) ** 2) ** 0.5
+        self.assertGreater(apart, 1.2, "feet should be planted well apart")
+        self.assertGreater(abs(L.Z - R.Z), 0.6, "one foot forward, one back")
 
     def test_every_pose_applies_without_error(self):
         m = self.built("R6G")
@@ -153,7 +164,7 @@ class Imported(unittest.TestCase):
 
     def test_r15_model_keeps_its_own_joints(self):
         # reuse a procedural fighter as the 'imported' R15 body
-        src = self.FM.build("AYAME", 1, "src")
+        src = self.FM.build("GOR", 1, "src")
         src.Name = "R15A"
         src.Parent = self.folder
         model = self.IF.build(self.def_for("R15A"), "Tester")

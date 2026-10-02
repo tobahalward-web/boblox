@@ -17,7 +17,7 @@ script sources in `IronClash/src` by `tools/build.py`, starting from `IronClash_
 
 **Fighters** (`Shared/FighterModels.lua`, `Shared/Secondary.lua`)
 - Arms, legs and torso are smooth lathe-style forms (stacked elliptical discs following muscle profiles) with joint caps, proper fists, shaped shoes and plated armour; no boxes or bead-chains.
-- A custom 26-bone skeleton (split spine, collarbones, toes, jaw) on top of the R15 joints, plus the new wolf-spirit fighter FENRA with a rigged tail and ears.
+- A custom 26-bone skeleton (split spine, collarbones, toes, jaw) on top of the R15 joints.
 - Fighters blink and flinch when hit (`Shared/Life.lua`). Hair strands, ponytails, scarves, belt tails and coat tails follow through a spring/drag simulation (secondary motion).
 
 **Combos** (`Shared/Moves.lua`, `Shared/FightControl.lua`, `ServerScriptService/.../MatchService.lua`)

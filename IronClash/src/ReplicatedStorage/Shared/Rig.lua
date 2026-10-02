@@ -170,7 +170,7 @@ function Rig.measure(char)
 		local function legChain6(hip)
 			local len = hip.part1.Size.Y
 			local hipPos = hip.C0.Position
-			return { hipPos = hipPos, len = len, thigh = len / 2, shin = len / 2, ankleH = 0, bottom = (lt * hipPos).Y - len }
+			return { hipPos = hipPos, len = len, width = hip.part1.Size.X, thigh = len / 2, shin = len / 2, ankleH = 0, bottom = (lt * hipPos).Y - len }
 		end
 		info.L = legChain6(J.lh)
 		info.R = legChain6(J.rh)
@@ -266,9 +266,29 @@ end
 local function applyR6(info, P)
 	local s = info.scale
 	local lie = (P.ly or 0) * (info.rootJointH - 0.5 * s)
-	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx), rad(P.ry), rad(P.rz))
+	-- A rigid leg cannot bend a knee, so the stance is made by spreading the feet: a wide, low A-frame
+	-- (feet further apart front-to-back and side-to-side) with the body leaning into it. The deeper the
+	-- pose crouches (more negative py), the wider the stride gets.
+	local depth = math.max(0, -(P.py + 0.32))
+	local spread = 2.8 + depth * 1.2
+	local lean = (spread - 1) * 5
+	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx - lean * (1 - (P.ly or 0))), rad(P.ry), rad(P.rz))
 	local ground = info.ground
 
+	-- keep a foot target within what a straight leg can reach from its hip (0.92 of its length, sideways)
+	-- A tilted bar's flat end dips at its low corner by about half its width times the tilt, so the end
+	-- centre is lifted by that much and the corner (not the centre) is what rests on the floor.
+	local function reachable(target, hipWorld, len, width)
+		local dx, dz = target.X - hipWorld.X, target.Z - hipWorld.Z
+		local d = math.sqrt(dx * dx + dz * dz)
+		local maxD = 0.92 * len
+		local k = 1
+		if d > maxD then
+			k = maxD / d
+			d = maxD
+		end
+		return Vector3.new(hipWorld.X + dx * k, target.Y + 0.5 * width * (d / len), hipWorld.Z + dz * k)
+	end
 	local function torsoCF(rt)
 		local actual = info.r0i.root * rt * info.r0.root
 		return info.rootC0 * actual * info.rootC1i
@@ -284,7 +304,7 @@ local function applyR6(info, P)
 		for _, sd in ipairs(sides) do
 			if sd.w > 0.5 then
 				local hipWorld = ltCF * sd.leg.hipPos
-				local target = Vector3.new(sd.fx * s, ground + sd.fy * s, sd.fz * s)
+				local target = reachable(Vector3.new(sd.fx * s * spread, ground + sd.fy * s, sd.fz * s * spread), hipWorld, sd.leg.len, sd.leg.width)
 				local dx, dz = target.X - hipWorld.X, target.Z - hipWorld.Z
 				local need = math.sqrt(math.max(sd.leg.len * sd.leg.len - dx * dx - dz * dz, (0.2 * sd.leg.len) ^ 2))
 				local y = target.Y + need
@@ -309,7 +329,7 @@ local function applyR6(info, P)
 		local hipT = fromYXZ(rad(sd.hx), rad(sd.hy), rad(sd.hz))
 		if sd.w > 0.001 then
 			local hipWorld = ltCF * sd.leg.hipPos
-			local target = Vector3.new(sd.fx * s, ground + sd.fy * s, sd.fz * s)
+			local target = reachable(Vector3.new(sd.fx * s * spread, ground + sd.fy * s, sd.fz * s * spread), hipWorld, sd.leg.len, sd.leg.width)
 			local v = target - hipWorld
 			if v.Magnitude > 1e-3 then
 				local dl = ltRot:VectorToObjectSpace(v.Unit)
