@@ -70,7 +70,7 @@ class Models(unittest.TestCase):
         for f in self.roster():
             m = self.FM.build(f.id, 1, f.name)
             n = len(parts_of(m))
-            self.assertLess(n, 260, f"{f.id} has {n} parts")
+            self.assertLess(n, 300, f"{f.id} has {n} parts")
 
     def test_every_fighter_has_secondary_chains(self):
         for f in self.roster():

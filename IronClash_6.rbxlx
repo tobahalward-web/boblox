@@ -3117,7 +3117,7 @@ end
 local function arm(B, side, look)
 	local sx = (side == "Left") and -1 or 1
 	local up, lo, hand = B[side .. "UpperArm"], B[side .. "LowerArm"], B[side .. "Hand"]
-	local k = look.bulk or 1
+	local k = (look.bulk or 1) * 1.16 -- heroic proportions: thick forearms, big fists
 	local function upperColor(y)
 		if look.sleeves == "long" then
 			return look.top
@@ -3174,7 +3174,7 @@ end
 
 local function leg(B, side, look)
 	local up, lo, foot = B[side .. "UpperLeg"], B[side .. "LowerLeg"], B[side .. "Foot"]
-	local k = look.bulk or 1
+	local k = (look.bulk or 1) * 1.1
 	local w = ((look.pantsStyle == "gi") and 1.12 or 1) * k
 	local shorts = look.pantsStyle == "shorts"
 	local shinCol = look.legs or look.pants
@@ -3228,17 +3228,21 @@ local function torso(B, look)
 	end
 	local waistCol = (j == "vest" or j == "crop") and look.inner2 or chestCol
 	-- rib cage, abdomen and waist as one lathe, with the trapezius sloping into the neck
-	local kx = 1 + (k - 1) * 0.55
-	loft(ut, { { 0.64, 0.36 * kx, 0.25 * k }, { 0.5, 0.7 * kx, 0.34 * k }, { 0.28, 0.74 * kx, 0.4 * k }, { 0.0, 0.64 * kx, 0.38 * k },
-		{ -0.3, 0.52 * kx, 0.33 * k }, { -0.66, 0.46 * kx, 0.3 * k } }, function(y)
+	local kx = (1 + (k - 1) * 0.55) * 1.12
+	loft(ut, { { 0.66, 0.42 * kx, 0.28 * k }, { 0.52, 0.74 * kx, 0.38 * k }, { 0.28, 0.78 * kx, 0.46 * k }, { 0.02, 0.66 * kx, 0.41 * k },
+		{ -0.3, 0.5 * kx, 0.33 * k }, { -0.66, 0.46 * kx, 0.3 * k } }, function(y)
 		return (y > -0.2) and chestCol or waistCol
 	end)
-	ell(ut, V(0.86 * kx, 0.34, 0.5 * k), V(0, 0.64, 0.03), (j == "vest") and look.skin or chestCol)
-	vcyl(ut, 0.42, 0.36 * k, V(0, 0.68, 0), look.skin, SP)
+	ell(ut, V(1.0 * kx, 0.42, 0.56 * k), V(0, 0.62, 0.04), (j == "vest") and look.skin or chestCol) -- trapezius
+	for _, sx in ipairs({ -1, 1 }) do
+		-- latissimus wings give the V-taper from broad shoulders to a narrow waist
+		ell(ut, V(0.34, 0.92, 0.42 * k), V(0.6 * sx * kx, 0.06, 0.06), (j == "vest") and look.skin or chestCol)
+	end
+	vcyl(ut, 0.46, 0.46 * k, V(0, 0.7, 0), look.skin, SP)
 	if j == nil or j == "gi" or j == "crop" then
 		-- chest definition under tight tops
 		for _, sx in ipairs({ -1, 1 }) do
-			ell(ut, V(0.56, 0.4, 0.26) * V(kx, 1, k), V(0.31 * sx * kx, 0.36, -0.33 * k), chestCol)
+			ell(ut, V(0.64, 0.46, 0.3) * V(kx, 1, k), V(0.34 * sx * kx, 0.34, -0.36 * k), chestCol)
 		end
 	end
 	if j == "gi" then
