@@ -3,6 +3,11 @@
 -- stylised geometry (hair, anime faces, outfits) welded onto the bones. Because we build the
 -- skeleton ourselves, every joint the animation system needs is guaranteed to exist.
 -- Works on the server (real fighters) and on clients (menu / HUD previews in ViewportFrames).
+--
+-- The bodies are sculpted from tapered ellipsoids (muscle masses, calves, shoes, torso plates) rather
+-- than boxes, so silhouettes read as rounded and organic. Hair, scarves and coat tails are built as
+-- "secondary motion" chains: extra bones that Shared/Secondary simulates every frame, so they swing,
+-- lag and settle as the fighter moves.
 
 local FighterModels = {}
 
@@ -10,6 +15,7 @@ local C = Color3.fromRGB
 local V = Vector3.new
 local M = Enum.Material
 local rad = math.rad
+local SP = M.SmoothPlastic
 
 ------------------------------------------------------------------------------------------
 -- skeleton (rest pose, feet on y = 0, facing -Z)
@@ -53,6 +59,8 @@ local JOINTS = {
 ------------------------------------------------------------------------------------------
 -- geometry helpers
 ------------------------------------------------------------------------------------------
+local building = nil -- the model currently being built (chain bones are parented to it)
+
 local function weld(bone, p)
 	local w = Instance.new("Weld")
 	w.Name = "VisWeld"
@@ -80,7 +88,7 @@ local function vis(bone, shape, size, cf, color, material, opts)
 	p.Size = size
 	p.CFrame = cf
 	p.Color = color
-	p.Material = material or M.SmoothPlastic
+	p.Material = material or SP
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
 	p.Anchored = false
@@ -102,6 +110,32 @@ local function vis(bone, shape, size, cf, color, material, opts)
 	return p
 end
 
+-- ellipsoid at a bone-local offset (optionally rotated by `rot`)
+local function ell(bone, size, offset, color, material, opts, rot)
+	local cf = bone.CFrame * CFrame.new(offset)
+	if rot then
+		cf = cf * rot
+	end
+	return vis(bone, "ellipsoid", size, cf, color, material or SP, opts)
+end
+
+-- A smooth organic limb: overlapping ellipsoids along the bone's Y axis following a width profile
+-- (list of { y, width }, top to bottom). Overlap keeps the outline flowing instead of bead-like.
+local function taper(bone, pts, depth, color, material, opts, xOffset)
+	for n = 1, #pts - 1 do
+		local y0, w0 = pts[n][1], pts[n][2]
+		local y1, w1 = pts[n + 1][1], pts[n + 1][2]
+		local len = math.abs(y1 - y0)
+		local count = math.max(1, math.ceil(len / 0.2))
+		local step = len / count
+		for i = 1, count do
+			local t = (i - 0.5) / count
+			local w = w0 + (w1 - w0) * t
+			ell(bone, V(w, step * 3.6, w * depth), V(xOffset or 0, y0 + (y1 - y0) * t, 0), color, material, opts)
+		end
+	end
+end
+
 -- vertical cylinder (along the bone's Y axis)
 local function vcyl(bone, len, d, localPos, color, material, opts)
 	return vis(bone, "cyl", V(len, d, d), bone.CFrame * CFrame.new(localPos) * CFrame.Angles(0, 0, rad(90)), color, material, opts)
@@ -109,6 +143,67 @@ end
 
 local function at(bone, localPos)
 	return bone.CFrame * CFrame.new(localPos)
+end
+
+-- a right-handed frame at `pos` whose Y axis runs along `axis`
+local function frameAlong(pos, axis, hint)
+	axis = axis.Unit
+	local right = axis:Cross(hint or V(0, 0, -1))
+	if right.Magnitude < 1e-3 then
+		right = axis:Cross(V(1, 0, 0))
+	end
+	right = right.Unit
+	local back = right:Cross(axis)
+	return CFrame.fromMatrix(pos, right, axis, back)
+end
+
+-- Builds a secondary-motion chain (see Shared/Secondary). `anchor` is a position in the parent bone's
+-- local space; `dirs` is one rest direction for every segment (a single Vector3 = straight chain);
+-- `lens` the segment lengths. shape(bone, i, startWorld, endWorld) attaches the visible geometry.
+local function chain(parent, name, anchor, dirs, lens, shape, opts)
+	opts = opts or {}
+	local prev = parent
+	local pos = parent.Position + anchor -- bones are axis-aligned at rest, so local == world offsets
+	for i, len in ipairs(lens) do
+		local dir = (typeof(dirs) == "Vector3") and dirs or dirs[i]
+		dir = dir.Unit
+		local s, e = pos, pos + dir * len
+		local bone = Instance.new("Part")
+		bone.Name = string.format("SecBone_%s_%d", name, i)
+		bone.Size = V(0.2, 0.2, 0.2)
+		bone.CFrame = CFrame.new((s + e) / 2)
+		bone.Transparency = 1
+		bone.Anchored = false
+		bone.CanCollide = false
+		bone.CanTouch = false
+		bone.CanQuery = false
+		bone.Massless = true
+		bone.TopSurface = Enum.SurfaceType.Smooth
+		bone.BottomSurface = Enum.SurfaceType.Smooth
+		bone.Parent = building
+		local m = Instance.new("Motor6D")
+		m.Name = string.format("Sec_%s_%d", name, i)
+		m.Part0 = prev
+		m.Part1 = bone
+		m.C0 = CFrame.new(s - prev.Position)
+		m.C1 = CFrame.new(s - bone.Position)
+		m:SetAttribute("Len", len)
+		m:SetAttribute("Rest", dir)
+		m:SetAttribute("Stiff", opts.stiff or 60)
+		m:SetAttribute("Drag", opts.drag or 8)
+		m:SetAttribute("Grav", opts.grav or 1)
+		m:SetAttribute("Limit", opts.limit or 70)
+		m.Parent = bone
+		shape(bone, i, s, e)
+		prev = bone
+		pos = e
+	end
+end
+
+-- a tapered strand / strip of cloth along a chain segment: width w (x), thickness d, length = segment
+local function strand(bone, s, e, w, d, color, material, hint)
+	local len = (e - s).Magnitude
+	return vis(bone, "ellipsoid", V(w, len * 1.45, d), frameAlong((s + e) / 2, e - s, hint), color, material or SP)
 end
 
 ------------------------------------------------------------------------------------------
@@ -127,43 +222,46 @@ local function face(head, look)
 	local dark = C(28, 22, 32)
 	if look.face == "visor" then
 		local glow = look.glow
-		vis(head, "block", V(0.82, 0.15, 0.06), head.CFrame * CFrame.new(0, 0.04, -0.47), glow, M.Neon, { noShadow = true })
-		vis(head, "block", V(0.86, 0.22, 0.04), head.CFrame * CFrame.new(0, 0.04, -0.45), C(20, 20, 26), M.SmoothPlastic)
+		ell(head, V(0.86, 0.17, 0.12), V(0, 0.04, -0.455), glow, M.Neon, { noShadow = true })
+		ell(head, V(0.9, 0.25, 0.1), V(0, 0.04, -0.435), C(20, 20, 26), SP)
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(head, "block", V(0.04, 0.08, 0.4), head.CFrame * CFrame.new(0.44 * sx, 0.05, -0.22), C(20, 20, 26), M.Metal)
+			ell(head, V(0.06, 0.12, 0.46), V(0.45 * sx, 0.05, -0.2), C(20, 20, 26), M.Metal)
 		end
 	elseif look.face ~= "helmet" then
 		for _, sx in ipairs({ -1, 1 }) do
 			local cf = onHead(head, V(0.39 * sx, 0.02, -0.92))
-			vis(head, "block", V(0.2, 0.26, 0.025), cf, dark, M.SmoothPlastic, { noShadow = true })
-			vis(head, "block", V(0.14, 0.18, 0.025), cf * CFrame.new(0, -0.02, -0.012), look.eye, M.SmoothPlastic, { noShadow = true })
-			vis(head, "block", V(0.07, 0.1, 0.025), cf * CFrame.new(0, -0.03, -0.02), C(16, 12, 20), M.SmoothPlastic, { noShadow = true })
-			vis(head, "block", V(0.06, 0.06, 0.025), cf * CFrame.new(-0.035 * sx, 0.05, -0.028), C(255, 255, 255), M.Neon, { noShadow = true })
-			vis(head, "block", V(0.25, 0.045, 0.03), cf * CFrame.new(0.01 * sx, 0.13, -0.01) * CFrame.Angles(0, 0, rad(-6 * sx)), dark, M.SmoothPlastic, { noShadow = true })
+			vis(head, "ellipsoid", V(0.21, 0.28, 0.05), cf, dark, SP, { noShadow = true })
+			vis(head, "ellipsoid", V(0.15, 0.2, 0.05), cf * CFrame.new(0, -0.02, -0.014), look.eye, SP, { noShadow = true })
+			vis(head, "ellipsoid", V(0.08, 0.12, 0.05), cf * CFrame.new(0, -0.03, -0.022), C(16, 12, 20), SP, { noShadow = true })
+			vis(head, "ellipsoid", V(0.065, 0.075, 0.05), cf * CFrame.new(-0.035 * sx, 0.05, -0.03), C(255, 255, 255), M.Neon, { noShadow = true })
+			vis(head, "ellipsoid", V(0.27, 0.055, 0.05), cf * CFrame.new(0.01 * sx, 0.14, -0.012) * CFrame.Angles(0, 0, rad(-6 * sx)), dark, SP, { noShadow = true })
 			local tilt = (look.brows == "calm") and 4 or 14
 			local bcf = onHead(head, V(0.37 * sx, 0.33, -0.86))
-			vis(head, "block", V(0.25, 0.05, 0.03), bcf * CFrame.Angles(0, 0, rad(-tilt * sx)), look.browColor or look.hair, M.SmoothPlastic, { noShadow = true })
+			vis(head, "ellipsoid", V(0.27, 0.065, 0.05), bcf * CFrame.Angles(0, 0, rad(-tilt * sx)), look.browColor or look.hair, SP, { noShadow = true })
 		end
+		-- nose and mouth
+		ell(head, V(0.1, 0.13, 0.14), V(0, -0.1, -0.5), look.skin, SP, { noShadow = true })
 		local mcf = onHead(head, V(0.02, -0.42, -0.9))
-		vis(head, "block", V(0.15, 0.03, 0.025), mcf * CFrame.Angles(0, 0, rad(look.smirk or 4)), C(120, 60, 60), M.SmoothPlastic, { noShadow = true })
+		vis(head, "ellipsoid", V(0.17, 0.04, 0.05), mcf * CFrame.Angles(0, 0, rad(look.smirk or 4)), C(120, 60, 60), SP, { noShadow = true })
 		if look.beard then
-			vis(head, "ellipsoid", V(0.5, 0.26, 0.3), head.CFrame * CFrame.new(0, -0.38, -0.3), look.hair, M.SmoothPlastic)
+			ell(head, V(0.56, 0.3, 0.34), V(0, -0.38, -0.3), look.hair, SP)
+			ell(head, V(0.3, 0.1, 0.16), V(0, -0.22, -0.46), look.hair, SP) -- moustache
 		end
 		if look.scar then
-			vis(head, "block", V(0.03, 0.22, 0.025), onHead(head, V(0.58, 0.12, -0.8)) * CFrame.Angles(0, 0, rad(20)), C(170, 90, 90), M.SmoothPlastic, { noShadow = true })
+			vis(head, "ellipsoid", V(0.035, 0.26, 0.045), onHead(head, V(0.58, 0.12, -0.8)) * CFrame.Angles(0, 0, rad(20)), C(170, 90, 90), SP, { noShadow = true })
 		end
 	end
 end
 
--- a blade-like hair spike from `base` pointing along `dir` (head-local)
+-- a blade-like hair spike: widest at the root (hidden in the scalp), tapering to a point at the tip
 local function spike(head, base, dir, len, thick, color, roll)
-	local tip = base + dir.Unit * len
-	local mid = (base + tip) / 2
-	return vis(head, "wedge", V(thick, thick * 0.85, len), head.CFrame * CFrame.lookAt(mid, tip) * CFrame.Angles(0, 0, roll or 0), color, M.SmoothPlastic)
+	local d = dir.Unit
+	local tip = base + d * len
+	return vis(head, "ellipsoid", V(thick, thick * 0.78, len * 2), head.CFrame * CFrame.lookAt(base, tip) * CFrame.Angles(0, 0, roll or 0), color, SP)
 end
 
 local function hairCap(head, color, size, offset)
-	return vis(head, "ellipsoid", size, head.CFrame * CFrame.new(offset), color, M.SmoothPlastic)
+	return ell(head, size, offset, color, SP)
 end
 
 local HAIR = {}
@@ -179,13 +277,13 @@ HAIR.spiky = function(head, look)
 	}
 	for i, sp in ipairs(spikes) do
 		local d = sp[1].Unit
-		spike(head, d * 0.36 + V(0, 0.12, 0.05), d, sp[2], 0.38, c, rad((i % 3 - 1) * 25))
+		spike(head, d * 0.36 + V(0, 0.12, 0.05), d, sp[2], 0.4, c, rad((i % 3 - 1) * 25))
 	end
 	for _, x in ipairs({ -0.24, 0, 0.24 }) do
-		spike(head, V(x, 0.42, -0.3), V(x * 0.7, -0.55, -0.55), 0.48, 0.3, c, 0)
+		spike(head, V(x, 0.42, -0.3), V(x * 0.7, -0.55, -0.55), 0.48, 0.32, c, 0)
 	end
 	if look.accent then
-		spike(head, V(0.2, 0.45, -0.25), V(0.5, -0.7, -0.4), 0.5, 0.22, look.accent, 0)
+		spike(head, V(0.2, 0.45, -0.25), V(0.5, -0.7, -0.4), 0.5, 0.24, look.accent, 0)
 	end
 end
 
@@ -193,26 +291,36 @@ HAIR.ponytail = function(head, look)
 	local c = look.hair
 	hairCap(head, c, V(1.06, 0.82, 1.08), V(0, 0.19, 0.07))
 	for _, sx in ipairs({ -1, 1 }) do
-		vis(head, "block", V(0.14, 0.62, 0.22), head.CFrame * CFrame.new(0.45 * sx, -0.12, -0.12) * CFrame.Angles(0, 0, rad(-4 * sx)), c, M.SmoothPlastic)
+		-- face-framing side locks that sway
+		chain(head, "Lock" .. (sx < 0 and "L" or "R"), V(0.43 * sx, 0.12, -0.14), { V(0.05 * sx, -1, 0.05), V(0, -1, 0.1) }, { 0.34, 0.3 },
+			function(bone, i, s, e)
+				strand(bone, s, e, 0.17 - 0.04 * i, 0.2, c)
+			end, { stiff = 100, drag = 10, limit = 55 })
 	end
 	for i, x in ipairs({ -0.3, -0.12, 0.08, 0.26 }) do
-		spike(head, V(x, 0.42, -0.3), V(0.35, -0.6, -0.5), 0.42 + i * 0.03, 0.26, c, 0)
+		spike(head, V(x, 0.42, -0.3), V(0.35, -0.6, -0.5), 0.42 + i * 0.03, 0.28, c, 0)
 	end
-	vcyl(head, 0.14, 0.3, V(0, 0.5, 0.36), look.trim, M.SmoothPlastic)
-	local chain = { { V(0, 0.6, 0.56), 0.44 }, { V(0, 0.42, 0.84), 0.4 }, { V(0, 0.08, 1.0), 0.34 }, { V(0, -0.3, 1.06), 0.28 }, { V(0, -0.62, 1.04), 0.2 } }
-	for _, ch in ipairs(chain) do
-		vis(head, "ellipsoid", V(ch[2] * 0.9, ch[2] * 1.3, ch[2]), head.CFrame * CFrame.new(ch[1]), c, M.SmoothPlastic)
-	end
+	vcyl(head, 0.14, 0.3, V(0, 0.5, 0.36), look.trim, SP)
+	-- the ponytail: arcs back from the tie, then hangs
+	local dirs = { V(0, -0.15, 1), V(0, -0.55, 0.85), V(0, -1, 0.4), V(0, -1, 0.1) }
+	local widths = { 0.4, 0.36, 0.3, 0.2 }
+	chain(head, "Pony", V(0, 0.52, 0.4), dirs, { 0.42, 0.42, 0.42, 0.38 }, function(bone, i, s, e)
+		strand(bone, s, e, widths[i], widths[i] * 0.95, c)
+	end, { stiff = 45, drag = 8, grav = 1.1, limit = 62 })
 end
 
 HAIR.topknot = function(head, look)
 	local c = look.hair
 	hairCap(head, c, V(1.03, 0.72, 1.05), V(0, 0.18, 0.05))
-	vis(head, "ball", V(0.42, 0.42, 0.42), head.CFrame * CFrame.new(0, 0.66, 0.08), c, M.SmoothPlastic)
-	vcyl(head, 0.12, 0.26, V(0, 0.48, 0.08), look.trim, M.SmoothPlastic)
+	vis(head, "ball", V(0.42, 0.42, 0.42), head.CFrame * CFrame.new(0, 0.66, 0.08), c, SP)
+	vcyl(head, 0.12, 0.26, V(0, 0.48, 0.08), look.trim, SP)
 	for _, sx in ipairs({ -1, 1 }) do
-		vis(head, "block", V(0.1, 0.3, 0.16), head.CFrame * CFrame.new(0.47 * sx, -0.08, -0.04), c, M.SmoothPlastic)
+		ell(head, V(0.14, 0.34, 0.2), V(0.47 * sx, -0.08, -0.04), c, SP)
 	end
+	-- a short loose tail from the knot
+	chain(head, "Knot", V(0, 0.7, 0.2), { V(0, 0.2, 1), V(0, -1, 0.5) }, { 0.3, 0.3 }, function(bone, i, s, e)
+		strand(bone, s, e, 0.2 - 0.05 * i, 0.2, c)
+	end, { stiff = 70, drag = 9, limit = 60 })
 end
 
 HAIR.slick = function(head, look)
@@ -228,9 +336,9 @@ HAIR.slick = function(head, look)
 		if look.accent and i == 3 then
 			col = look.accent
 		end
-		spike(head, d * 0.32 + V(0, 0.16, 0.05), d, sp[2], 0.36, col, rad((i % 2) * 180))
+		spike(head, d * 0.32 + V(0, 0.16, 0.05), d, sp[2], 0.38, col, rad((i % 2) * 180))
 	end
-	spike(head, V(0.18, 0.42, -0.3), V(0.35, -0.8, -0.35), 0.62, 0.24, look.accent or c, 0)
+	spike(head, V(0.18, 0.42, -0.3), V(0.35, -0.8, -0.35), 0.62, 0.26, look.accent or c, 0)
 end
 
 HAIR.messy = function(head, look)
@@ -245,24 +353,36 @@ HAIR.messy = function(head, look)
 			local d = V(math.cos(a) * (1 - y * 0.5), y, math.sin(a) * (1 - y * 0.5) + 0.15)
 			if d.Z > -0.35 or y > 0.6 then
 				n = n + 1
-				spike(head, d.Unit * 0.36 + V(0, 0.12, 0.04), d, 0.42 + (n % 3) * 0.1, 0.32, c, rad(n * 37))
+				spike(head, d.Unit * 0.36 + V(0, 0.12, 0.04), d, 0.42 + (n % 3) * 0.1, 0.34, c, rad(n * 37))
 			end
 		end
 	end
 	for _, x in ipairs({ -0.28, -0.08, 0.12, 0.3 }) do
-		spike(head, V(x, 0.42, -0.3), V(-x * 0.5, -0.6, -0.5), 0.4, 0.26, c, 0)
+		spike(head, V(x, 0.42, -0.3), V(-x * 0.5, -0.6, -0.5), 0.4, 0.28, c, 0)
+	end
+	-- headband with two tails that flutter
+	vcyl(head, 0.2, 1.0, V(0, 0.28, 0), look.trim, SP)
+	for _, sx in ipairs({ -1, 1 }) do
+		chain(head, "Band" .. (sx < 0 and "L" or "R"), V(0.12 * sx, 0.28, 0.47), { V(0.35 * sx, -0.3, 1), V(0.2 * sx, -1, 0.4) }, { 0.36, 0.34 },
+			function(bone, i, s, e)
+				strand(bone, s, e, 0.17, 0.05, look.trim, M.Fabric)
+			end, { stiff = 90, drag = 10, limit = 60 })
 	end
 end
 
 HAIR.helmet = function(head, look)
 	local metal = look.top
-	vis(head, "ellipsoid", V(1.14, 1.16, 1.16), head.CFrame * CFrame.new(0, 0.04, 0), metal, M.Metal, { reflect = 0.05 })
-	vis(head, "block", V(0.84, 0.16, 0.1), head.CFrame * CFrame.new(0, 0.06, -0.54), look.glow, M.Neon, { noShadow = true })
-	vis(head, "block", V(0.92, 0.3, 0.12), head.CFrame * CFrame.new(0, -0.3, -0.5), look.trim, M.Metal)
-	vis(head, "wedge", V(0.12, 0.45, 0.9), head.CFrame * CFrame.new(0, 0.66, 0.1) * CFrame.Angles(0, math.pi, 0), look.trim, M.Metal)
+	ell(head, V(1.14, 1.16, 1.16), V(0, 0.04, 0), metal, M.Metal, { reflect = 0.05 })
+	ell(head, V(0.9, 0.18, 0.16), V(0, 0.06, -0.52), look.glow, M.Neon, { noShadow = true })
+	ell(head, V(0.96, 0.34, 0.2), V(0, -0.3, -0.48), look.trim, M.Metal)
 	for _, sx in ipairs({ -1, 1 }) do
-		vis(head, "ellipsoid", V(0.2, 0.4, 0.4), head.CFrame * CFrame.new(0.58 * sx, 0, 0), look.trim, M.Metal)
+		ell(head, V(0.22, 0.42, 0.42), V(0.58 * sx, 0, 0), look.trim, M.Metal)
 	end
+	-- crest + a plume that streams behind the helmet
+	ell(head, V(0.14, 0.34, 0.9), V(0, 0.62, 0.05), look.trim, M.Metal)
+	chain(head, "Plume", V(0, 0.6, 0.45), { V(0, 0.45, 1), V(0, -0.1, 1), V(0, -0.8, 0.7) }, { 0.4, 0.42, 0.4 }, function(bone, i, s, e)
+		strand(bone, s, e, 0.2 - 0.03 * i, 0.2, look.glow, M.Neon)
+	end, { stiff = 50, drag = 7, limit = 60 })
 end
 
 ------------------------------------------------------------------------------------------
@@ -274,33 +394,35 @@ local function arm(B, side, look)
 	local k = look.bulk or 1
 	local sleeveUp = (look.sleeves == "short" or look.sleeves == "long") and look.top or look.skin
 	local sleeveLo = (look.sleeves == "long") and look.top or look.skin
-	vis(up, "ball", V(0.6, 0.6, 0.6) * k, at(up, V(0, 0.4, 0)), (look.sleeves == "none") and look.skin or look.top, M.SmoothPlastic)
-	vcyl(up, 0.86, 0.44 * k, V(0, 0, 0), sleeveUp, M.SmoothPlastic)
-	vis(up, "ball", V(0.42, 0.42, 0.42) * k, at(up, V(0, -0.45, 0)), sleeveUp, M.SmoothPlastic)
-	vcyl(lo, 0.84, 0.4 * k, V(0, 0, 0), sleeveLo, M.SmoothPlastic)
+	-- shoulder cap, then upper arm and forearm as smooth tapers (thick at the muscle, slim at the wrist)
+	ell(up, V(0.6, 0.6, 0.6) * k, V(0, 0.38, 0), (look.sleeves == "none") and look.skin or look.top)
+	taper(up, { { 0.5, 0.5 * k }, { 0.2, 0.56 * k }, { -0.2, 0.5 * k }, { -0.52, 0.4 * k } }, 1.0, sleeveUp)
+	taper(lo, { { 0.5, 0.42 * k }, { 0.15, 0.5 * k }, { -0.2, 0.4 * k }, { -0.5, 0.28 * k } }, 1.0, sleeveLo)
 	if look.sleeves == "short" then
-		vcyl(up, 0.16, 0.47 * k, V(0, -0.2, 0), look.trim, M.SmoothPlastic)
+		vcyl(up, 0.16, 0.5 * k, V(0, -0.22, 0), look.trim, SP)
 	end
 	if look.wraps then
-		vcyl(lo, 0.36, 0.43 * k, V(0, -0.22, 0), look.wraps, M.Fabric)
+		vcyl(lo, 0.36, 0.4 * k, V(0, -0.22, 0), look.wraps, M.Fabric)
 	end
 	if look.bracer then
-		vcyl(lo, 0.42, 0.47 * k, V(0, -0.15, 0), look.bracer, M.Metal, { reflect = 0.1 })
-		vcyl(lo, 0.06, 0.5 * k, V(0, -0.32, 0), look.glow, M.Neon, { noShadow = true })
+		vcyl(lo, 0.42, 0.44 * k, V(0, -0.15, 0), look.bracer, M.Metal, { reflect = 0.1 })
+		vcyl(lo, 0.06, 0.47 * k, V(0, -0.32, 0), look.glow, M.Neon, { noShadow = true })
 	end
 	local fist = look.glove or look.skin
 	if look.face == "helmet" then
-		vis(hand, "block", V(0.46, 0.46, 0.5) * k, at(hand, V(0, -0.02, 0)), look.trim, M.Metal)
-		vis(hand, "block", V(0.48, 0.06, 0.52) * k, at(hand, V(0, 0.15, 0)), look.glow, M.Neon, { noShadow = true })
+		-- armoured gauntlet: rounded knuckle plates
+		ell(hand, V(0.52, 0.5, 0.56) * k, V(0, -0.02, 0), look.trim, M.Metal)
+		ell(hand, V(0.5, 0.08, 0.54) * k, V(0, 0.16, 0), look.glow, M.Neon, { noShadow = true })
 	else
-		vis(hand, "ellipsoid", V(0.42, 0.44, 0.48) * k, at(hand, V(0, -0.02, 0)), fist, M.SmoothPlastic)
+		ell(hand, V(0.44, 0.46, 0.5) * k, V(0, -0.02, 0), fist)
+		ell(hand, V(0.18, 0.2, 0.28) * k, V(-0.2 * sx, 0.04, -0.12), fist) -- thumb
 		if look.glove and look.glowGloves then
-			vis(hand, "block", V(0.44, 0.05, 0.5) * k, at(hand, V(0, 0.14, 0)), look.glow, M.Neon, { noShadow = true })
+			vcyl(hand, 0.07, 0.4 * k, V(0, 0.15, 0), look.glow, M.Neon, { noShadow = true })
 		end
 	end
 	if look.pauldrons then
-		vis(up, "ellipsoid", V(0.8, 0.5, 0.75) * k, at(up, V(0.12 * sx, 0.42, 0)), look.trim, M.Metal)
-		vis(up, "block", V(0.06, 0.06, 0.6) * k, at(up, V(0.4 * sx, 0.42, 0)), look.glow, M.Neon, { noShadow = true })
+		ell(up, V(0.84, 0.52, 0.8) * k, V(0.12 * sx, 0.42, 0), look.trim, M.Metal)
+		ell(up, V(0.12, 0.1, 0.62) * k, V(0.42 * sx, 0.42, 0), look.glow, M.Neon, { noShadow = true })
 	end
 end
 
@@ -311,24 +433,27 @@ local function leg(B, side, look)
 	local thighCol = look.pants
 	local shinCol = look.legs or look.pants
 	if look.pantsStyle == "shorts" then
-		vcyl(up, 0.5, 0.62 * k, V(0, 0.26, 0), look.pants, M.Fabric)
-		vcyl(up, 0.55, 0.52 * k, V(0, -0.24, 0), shinCol, M.SmoothPlastic)
+		taper(up, { { 0.58, 0.66 * k }, { 0.15, 0.7 * k }, { -0.1, 0.62 * k } }, 1.0, look.pants, M.Fabric)
+		taper(up, { { -0.1, 0.58 * k }, { -0.35, 0.52 * k }, { -0.56, 0.46 * k } }, 1.0, shinCol)
 		thighCol = shinCol
 	else
-		vcyl(up, 1.0, 0.56 * k * wide, V(0, 0, 0), thighCol, M.Fabric)
+		-- quad / hamstring mass, widest just below the hip
+		taper(up, { { 0.6, 0.62 * k * wide }, { 0.2, 0.7 * k * wide }, { -0.2, 0.6 * k * wide }, { -0.56, 0.46 * k * wide } }, 1.0, thighCol, M.Fabric)
 	end
-	vis(up, "ball", V(0.54, 0.54, 0.54) * k * wide, at(up, V(0, -0.5, 0)), thighCol, M.Fabric)
-	vcyl(lo, 0.96, 0.5 * k * wide, V(0, 0.02, 0), shinCol, M.Fabric)
+	-- calf: bulges just below the knee and tapers to the ankle
+	taper(lo, { { 0.56, 0.46 * k * wide }, { 0.2, 0.56 * k * wide }, { -0.15, 0.42 * k * wide }, { -0.5, 0.3 * k * wide } }, 1.05, shinCol, M.Fabric)
 	if look.pantsStyle == "gi" and look.wraps then
-		vcyl(lo, 0.22, 0.52 * k, V(0, -0.38, 0), look.wraps, M.Fabric)
+		vcyl(lo, 0.22, 0.46 * k, V(0, -0.38, 0), look.wraps, M.Fabric)
 	end
 	if look.face == "helmet" then
-		vcyl(lo, 0.6, 0.6 * k, V(0, -0.18, 0), look.trim, M.Metal)
+		ell(lo, V(0.6, 0.56, 0.6) * k, V(0, -0.14, 0), look.trim, M.Metal)
+		ell(up, V(0.58, 0.46, 0.6) * k, V(0, -0.5, -0.04), look.trim, M.Metal) -- knee guard
 	end
-	-- shoe
-	vis(foot, "block", V(0.48, 0.26, 0.82) * k, at(foot, V(0, 0.01, 0.02)), look.shoes, M.SmoothPlastic)
-	vis(foot, "ellipsoid", V(0.48, 0.28, 0.4) * k, at(foot, V(0, 0.01, -0.38)), look.shoes, M.SmoothPlastic)
-	vis(foot, "block", V(0.5, 0.06, 0.88) * k, at(foot, V(0, -0.11, 0)), look.sole or C(30, 30, 34), M.SmoothPlastic)
+	-- shoe: rounded toe box + heel + sole
+	ell(foot, V(0.48, 0.3, 0.7) * k, V(0, 0.02, 0.1), look.shoes)
+	ell(foot, V(0.46, 0.3, 0.46) * k, V(0, 0.02, -0.28), look.shoes)
+	ell(foot, V(0.5, 0.1, 0.94) * k, V(0, -0.1, 0), look.sole or C(30, 30, 34))
+	ell(foot, V(0.34, 0.26, 0.3) * k, V(0, 0.16, 0.22), look.shoes) -- ankle collar
 end
 
 local function torso(B, look)
@@ -341,66 +466,96 @@ local function torso(B, look)
 	elseif j == "crop" then
 		chestCol = look.inner
 	end
-	-- chest + waist
-	vis(ut, "block", V(1.34 * k, 0.9, 0.7 * k), at(ut, V(0, 0.18, 0)), chestCol, M.SmoothPlastic)
-	vis(ut, "block", V(1.08 * k, 0.5, 0.62 * k), at(ut, V(0, -0.45, 0)), (j == "vest" or j == "crop") and look.inner2 or chestCol, M.SmoothPlastic)
-	vcyl(ut, 0.42, 0.36 * k, V(0, 0.68, 0), look.skin, M.SmoothPlastic)
+	local waistCol = (j == "vest" or j == "crop") and look.inner2 or chestCol
+	-- rib cage, abdomen, trapezius
+	ell(ut, V(1.42, 1.16, 0.82) * V(k, 1, k), V(0, 0.13, 0), chestCol)
+	ell(ut, V(1.1, 0.88, 0.68) * V(k, 1, k), V(0, -0.4, 0), waistCol)
+	ell(ut, V(0.98, 0.44, 0.62) * V(k, 1, k), V(0, 0.72, 0.04), (j == "vest") and look.skin or chestCol)
+	vcyl(ut, 0.42, 0.36 * k, V(0, 0.68, 0), look.skin, SP)
+	if j == nil or j == "gi" or j == "crop" then
+		-- chest definition under tight tops
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(ut, V(0.62, 0.46, 0.3) * V(k, 1, k), V(0.32 * sx * k, 0.4, -0.31 * k), chestCol)
+		end
+	end
 	if j == "gi" then
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(ut, "block", V(0.18, 0.62, 0.05), at(ut, V(0.12 * sx, 0.36, -0.355)) * CFrame.Angles(0, 0, rad(-26 * sx)), look.skin, M.SmoothPlastic, { noShadow = true })
-			vis(ut, "block", V(0.08, 0.95, 0.06), at(ut, V(0.24 * sx, 0.16, -0.36)) * CFrame.Angles(0, 0, rad(-24 * sx)), look.trim, M.SmoothPlastic, { noShadow = true })
+			-- crossed lapels following the chest curve
+			ell(ut, V(0.2, 0.78, 0.07), V(0.13 * sx, 0.34, -0.4), look.skin, SP, { noShadow = true }, CFrame.Angles(0, rad(10 * sx), rad(-26 * sx)))
+			ell(ut, V(0.1, 1.05, 0.07), V(0.26 * sx, 0.12, -0.38), look.trim, SP, { noShadow = true }, CFrame.Angles(0, rad(8 * sx), rad(-24 * sx)))
 		end
-		vis(ut, "block", V(1.36 * k, 0.1, 0.72 * k), at(ut, V(0, 0.64, 0)), look.trim, M.SmoothPlastic)
+		ell(ut, V(1.4 * k, 0.12, 0.74 * k), V(0, 0.62, 0), look.trim, SP)
 	elseif j == "crop" then
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(ut, "block", V(0.46 * k, 1.0, 0.06), at(ut, V(0.44 * sx * k, 0.12, -0.37 * k)), look.top, M.Fabric)
-			vis(ut, "block", V(0.06, 1.0, 0.07), at(ut, V(0.2 * sx, 0.12, -0.38 * k)), look.trim, M.SmoothPlastic, { noShadow = true })
-			vis(ut, "wedge", V(0.12, 0.3, 0.32), at(ut, V(0.3 * sx, 0.72, -0.12)) * CFrame.Angles(0, 0, rad(10 * sx)), look.top, M.Fabric)
+			-- open jacket flaps with trim, rounded collar
+			ell(ut, V(0.54 * k, 1.04, 0.16), V(0.47 * sx * k, 0.12, -0.34 * k), look.top, M.Fabric, nil, CFrame.Angles(0, rad(-14 * sx), 0))
+			ell(ut, V(0.07, 1.0, 0.1), V(0.22 * sx, 0.12, -0.4 * k), look.trim, SP, { noShadow = true })
+			ell(ut, V(0.2, 0.34, 0.34), V(0.3 * sx, 0.74, -0.12), look.top, M.Fabric, nil, CFrame.Angles(0, 0, rad(10 * sx)))
 		end
-		vis(ut, "block", V(1.38 * k, 1.05, 0.08), at(ut, V(0, 0.1, 0.36 * k)), look.top, M.Fabric)
+		ell(ut, V(1.46 * k, 1.1, 0.16), V(0, 0.1, 0.36 * k), look.top, M.Fabric)
 	elseif j == "vest" then
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(ut, "ellipsoid", V(0.56, 0.42, 0.24) * k, at(ut, V(0.3 * sx * k, 0.32, -0.3 * k)), look.skin, M.SmoothPlastic)
-			vis(ut, "block", V(0.34 * k, 1.2, 0.07), at(ut, V(0.55 * sx * k, 0.0, -0.37 * k)), look.top, M.Fabric)
-			vis(ut, "block", V(0.05, 1.2, 0.08), at(ut, V(0.39 * sx * k, 0.0, -0.38 * k)), look.trim, M.SmoothPlastic, { noShadow = true })
+			ell(ut, V(0.58, 0.44, 0.26) * V(k, 1, k), V(0.3 * sx * k, 0.32, -0.3 * k), look.skin, SP)
+			ell(ut, V(0.36 * k, 1.2, 0.1), V(0.55 * sx * k, 0, -0.35 * k), look.top, M.Fabric)
+			ell(ut, V(0.06, 1.2, 0.1), V(0.39 * sx * k, 0, -0.38 * k), look.trim, SP, { noShadow = true })
 		end
-		vis(ut, "block", V(1.4 * k, 1.25, 0.08), at(ut, V(0, 0.02, 0.37 * k)), look.top, M.Fabric)
+		ell(ut, V(1.44 * k, 1.28, 0.14), V(0, 0.02, 0.37 * k), look.top, M.Fabric)
 	elseif j == "coat" then
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(ut, "block", V(0.08, 1.2, 0.06), at(ut, V(0.16 * sx, 0.02, -0.37 * k)), look.glow, M.Neon, { noShadow = true })
-			vis(ut, "block", V(0.1, 0.5, 0.42), at(ut, V(0.3 * sx, 0.86, 0.02)) * CFrame.Angles(0, 0, rad(-8 * sx)), look.top, M.Fabric)
+			ell(ut, V(0.08, 1.2, 0.08), V(0.16 * sx, 0.02, -0.4 * k), look.glow, M.Neon, { noShadow = true })
+			ell(ut, V(0.16, 0.54, 0.46), V(0.3 * sx, 0.84, 0.02), look.top, M.Fabric, nil, CFrame.Angles(0, 0, rad(-8 * sx)))
 		end
-		vis(ut, "block", V(0.62, 0.5, 0.1), at(ut, V(0, 0.86, 0.22)), look.top, M.Fabric)
-		-- coat tails
+		ell(ut, V(0.7, 0.5, 0.16), V(0, 0.86, 0.22), look.top, M.Fabric)
+		-- long coat tails that billow behind (secondary motion)
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(lt, "block", V(0.52, 1.5, 0.08), at(lt, V(0.3 * sx, -0.75, 0.36)) * CFrame.Angles(rad(8), 0, rad(4 * sx)), look.top, M.Fabric)
-			vis(lt, "block", V(0.06, 1.5, 0.09), at(lt, V(0.55 * sx, -0.75, 0.36)) * CFrame.Angles(rad(8), 0, rad(4 * sx)), look.glow, M.Neon, { noShadow = true })
+			local nm = "Coat" .. (sx < 0 and "L" or "R")
+			chain(lt, nm, V(0.3 * sx, -0.02, 0.34), { V(0.05 * sx, -1, 0.12), V(0.04 * sx, -1, 0.2), V(0.02 * sx, -1, 0.3) }, { 0.5, 0.5, 0.46 },
+				function(bone, i, s, e)
+					strand(bone, s, e, 0.56 - 0.04 * i, 0.07, look.top, M.Fabric)
+					strand(bone, s + V(0.27 * sx, 0, 0.0), e + V(0.27 * sx, 0, 0.0), 0.06, 0.08, look.glow, M.Neon, V(1, 0, 0))
+				end, { stiff = 32, drag = 6.5, grav = 1.3, limit = 65 })
 		end
 	elseif j == "armor" then
-		vis(ut, "block", V(1.2 * k, 0.75, 0.2), at(ut, V(0, 0.25, -0.38 * k)), look.trim, M.Metal, { reflect = 0.05 })
-		vis(ut, "block", V(0.7, 0.08, 0.06), at(ut, V(0, 0.15, -0.49 * k)), look.glow, M.Neon, { noShadow = true })
-		vis(ut, "block", V(0.08, 0.5, 0.06), at(ut, V(0, 0.35, -0.49 * k)), look.glow, M.Neon, { noShadow = true })
-		vis(ut, "block", V(1.25 * k, 0.9, 0.18), at(ut, V(0, 0.2, 0.38 * k)), look.trim, M.Metal)
+		ell(ut, V(1.34 * k, 0.9, 0.3), V(0, 0.26, -0.37 * k), look.trim, M.Metal, { reflect = 0.05 })
+		ell(ut, V(0.72, 0.1, 0.1), V(0, 0.15, -0.5 * k), look.glow, M.Neon, { noShadow = true })
+		ell(ut, V(0.1, 0.52, 0.1), V(0, 0.36, -0.5 * k), look.glow, M.Neon, { noShadow = true })
+		ell(ut, V(1.3 * k, 0.96, 0.26), V(0, 0.2, 0.38 * k), look.trim, M.Metal)
+		ell(ut, V(1.1 * k, 0.4, 0.5), V(0, -0.46, -0.08), look.trim, M.Metal) -- abdomen plates
 	end
 	if look.scarf then
 		vcyl(ut, 0.26, 0.62, V(0, 0.66, 0), look.scarf, M.Fabric)
-		for i, sx in ipairs({ -1, 1 }) do
-			vis(ut, "block", V(0.22, 0.85, 0.06), at(ut, V(0.16 * sx, 0.25, 0.42 + i * 0.03)) * CFrame.Angles(rad(12), 0, rad(8 * sx)), look.scarf, M.Fabric)
+		ell(ut, V(0.7, 0.32, 0.66), V(0, 0.66, 0), look.scarf, M.Fabric)
+		-- two scarf tails that trail behind the shoulders
+		for _, sx in ipairs({ -1, 1 }) do
+			chain(ut, "Scarf" .. (sx < 0 and "L" or "R"), V(0.16 * sx, 0.6, 0.38), { V(0.1 * sx, -0.7, 1), V(0.06 * sx, -1, 0.45), V(0.04 * sx, -1, 0.25) }, { 0.42, 0.46, 0.44 },
+				function(bone, i, s, e)
+					strand(bone, s, e, 0.26 - 0.02 * i, 0.06, look.scarf, M.Fabric)
+				end, { stiff = 40, drag = 6.5, grav = 1.1, limit = 65 })
 		end
 	end
 	-- hips + belt
-	vis(lt, "block", V(1.16 * k, 0.52, 0.66 * k), at(lt, V(0, 0, 0)), look.pants, M.Fabric)
-	vis(lt, "block", V(1.2 * k, 0.16, 0.7 * k), at(lt, V(0, 0.18, 0)), look.belt, look.beltMat or M.Fabric)
+	ell(lt, V(1.2, 0.64, 0.74) * V(k, 1, k), V(0, -0.02, 0), look.pants, M.Fabric)
+	ell(lt, V(1.24, 0.2, 0.78) * V(k, 1, k), V(0, 0.19, 0), look.belt, look.beltMat or M.Fabric)
 	if look.pantsStyle == "gi" then
-		vis(lt, "block", V(0.22, 0.2, 0.08), at(lt, V(0.1, 0.18, -0.37 * k)), look.belt, M.Fabric)
-		for _, sx in ipairs({ -1, 1 }) do
-			vis(lt, "block", V(0.1, 0.5, 0.04), at(lt, V(0.1 + 0.09 * sx, -0.12, -0.38 * k)) * CFrame.Angles(0, 0, rad(10 * sx)), look.belt, M.Fabric)
+		ell(lt, V(0.22, 0.2, 0.12), V(0.1, 0.18, -0.38 * k), look.belt, M.Fabric)
+		-- the belt knot's loose ends flutter
+		for i, sx in ipairs({ -1, 1 }) do
+			chain(lt, "Obi" .. i, V(0.1, 0.16, -0.38 * k), { V(0.18 * sx, -1, -0.05), V(0.2 * sx, -1, 0.05) }, { 0.32, 0.3 }, function(bone, n, s, e)
+				strand(bone, s, e, 0.11, 0.04, look.belt, M.Fabric)
+			end, { stiff = 100, drag = 10, limit = 60 })
 		end
 	elseif look.beltMat == M.Metal then
-		vis(lt, "block", V(0.26, 0.2, 0.08), at(lt, V(0, 0.18, -0.37 * k)), look.glow, M.Neon, { noShadow = true })
+		ell(lt, V(0.28, 0.22, 0.12), V(0, 0.18, -0.38 * k), look.glow, M.Neon, { noShadow = true })
+		-- cloth tabard front and back
+		for _, z in ipairs({ -1, 1 }) do
+			chain(lt, "Tabard" .. (z < 0 and "F" or "B"), V(0, 0.12, 0.36 * z * k), { V(0, -1, 0.06 * z), V(0, -1, 0.1 * z) }, { 0.46, 0.42 }, function(bone, i, s, e)
+				strand(bone, s, e, 0.52 - 0.06 * i, 0.06, look.top, M.Fabric)
+			end, { stiff = 60, drag = 8, grav = 1.2, limit = 55 })
+		end
 	end
 end
 
+------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------
 -- roster (all original characters)
 ------------------------------------------------------------------------------------------
@@ -518,6 +673,7 @@ function FighterModels.build(id, palette, displayName)
 
 	local model = Instance.new("Model")
 	model.Name = displayName or def.name
+	building = model
 	local B = {}
 	for _, b in ipairs(BONES) do
 		local p = Instance.new("Part")
@@ -550,9 +706,10 @@ function FighterModels.build(id, palette, displayName)
 	-- head
 	local head = B.Head
 	if look.face ~= "helmet" then
-		vis(head, "ellipsoid", V(0.98, 1.04, 0.98), head.CFrame * CFrame.new(0, -0.02, 0), look.skin, M.SmoothPlastic)
+		ell(head, V(0.98, 1.04, 0.98), V(0, -0.02, 0), look.skin)
+		ell(head, V(0.8, 0.56, 0.86), V(0, -0.27, -0.05), look.skin) -- jaw and chin
 		for _, sx in ipairs({ -1, 1 }) do
-			vis(head, "ellipsoid", V(0.12, 0.22, 0.16), head.CFrame * CFrame.new(0.48 * sx, -0.04, 0.02), look.skin, M.SmoothPlastic)
+			ell(head, V(0.12, 0.22, 0.16), V(0.48 * sx, -0.04, 0.02), look.skin)
 		end
 	end
 	face(head, look)
@@ -577,6 +734,7 @@ function FighterModels.build(id, palette, displayName)
 	model:SetAttribute("FighterId", def.id)
 	model:SetAttribute("Palette", palette or 1)
 	model:SetAttribute("Glow", look.glow)
+	building = nil
 	return model
 end
 

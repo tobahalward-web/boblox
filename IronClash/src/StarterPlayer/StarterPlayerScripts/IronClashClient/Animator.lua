@@ -7,6 +7,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Rig = require(Shared:WaitForChild("Rig"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local Moves = require(Shared:WaitForChild("Moves"))
+local Secondary = require(Shared:WaitForChild("Secondary"))
 
 local Animator = {}
 Animator.__index = Animator
@@ -125,6 +126,7 @@ function Animator:track(char, motor, floorY)
 		motor = motor,
 		floorY = floorY or 0,
 		pose = Poses.make(),
+		sec = Secondary.new(char),
 		spring = Poses.newSpring(Poses.Base.STANCE),
 		phase = math.random() * 10,
 		key = nil,
@@ -151,6 +153,7 @@ function Animator:untrack(char)
 		if tr.guardConn then
 			tr.guardConn:Disconnect()
 		end
+		Secondary.clear(tr.sec)
 		Rig.clear(tr.info)
 		for _, t in pairs(tr.trails) do
 			t.trail:Destroy()
@@ -218,6 +221,7 @@ function Animator:stepTrack(tr, dt, now)
 			return
 		end
 		tr.info = info
+		tr.sec = Secondary.new(tr.char)
 	end
 	local st
 	if tr.motor then
@@ -330,6 +334,12 @@ function Animator:stepTrack(tr, dt, now)
 	local target = Poses.evaluate(st, self.clock + tr.phase)
 	Poses.springStep(tr.spring, target, dt, Poses.boostFor(st.state), tr.pose)
 	Rig.apply(tr.info, tr.pose)
+	if #tr.sec.chains == 0 and self.clock > (tr.secCheck or 0) then
+		-- joints can replicate a moment after the model: look again for secondary-motion chains
+		tr.secCheck = self.clock + 2
+		tr.sec = Secondary.new(tr.char)
+	end
+	Secondary.step(tr.sec, dt) -- hair, scarves and coat tails follow through (frozen during hit-stop)
 end
 
 function Animator:step(dt, now)

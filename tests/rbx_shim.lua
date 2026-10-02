@@ -413,6 +413,7 @@ Inst.__index = function(t, k)
 	if v ~= nil then return v end
 	if k == "Position" and props.CFrame then return props.CFrame.p end
 	if k == "AssemblyMass" then return 10 end
+	if k == "ClassName" then return rawget(t, "_cls") end
 	if k == "Parent" then return rawget(t, "_parent") end
 	-- child by name
 	for _, c in ipairs(rawget(t, "_children")) do
@@ -482,6 +483,7 @@ GuiMT.__index = function(t, k)
 	local v = props[k]
 	if v ~= nil then return v end
 	if k == "Parent" then return rawget(t, "_parent") end
+	if k == "ClassName" then return rawget(t, "_cls") end
 	for _, c in ipairs(rawget(t, "_children")) do if c.Name == k then return c end end
 	if k == "AbsoluteSize" then return Vector2.new(800, 600) end
 	if k == "AbsolutePosition" then return Vector2.new(0, 0) end
@@ -521,6 +523,14 @@ local function rawInst(cls)
 		o._props.Massless = false
 		o._props.AssemblyLinearVelocity = Vector3.zero
 		if cls == "WedgePart" then o._props.Shape = Enum.PartType.Wedge end
+	end
+	if cls == "Motor6D" then
+		o._props.Transform = CFrame.new()
+		o._props.C0 = CFrame.new()
+		o._props.C1 = CFrame.new()
+	elseif cls == "Weld" then
+		o._props.C0 = CFrame.new()
+		o._props.C1 = CFrame.new()
 	end
 	return o
 end
@@ -695,6 +705,7 @@ local function permissive(inst)
 		local v = Inst[k]
 		if v ~= nil then return v end
 		if k == "Parent" then return rawget(t, "_parent") end
+		if k == "ClassName" then return rawget(t, "_cls") end
 		local p = rawget(t, "_props")[k]
 		if p ~= nil then return p end
 		for _, c in ipairs(rawget(t, "_children")) do if c.Name == k then return c end end
