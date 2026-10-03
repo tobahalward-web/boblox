@@ -194,7 +194,115 @@ local function motor(name, part0, part1, c0, c1)
 	return m
 end
 
-local function prepareR6(model)
+-- Rebuilds a standard-layout R6 body (torso at the origin, limbs beside and below it) as an R15-style body:
+-- every arm becomes upper arm / lower arm / hand and every leg upper leg / lower leg / foot, joined by real
+-- elbow, wrist, knee and ankle joints, so the fighter can crouch and fold its guard. The new limb parts take
+-- the old limb's colour; anything painted onto the old limb parts (classic shirt / pants templates) is lost.
+-- Parts welded to a limb move to whichever segment they sit on.
+local function splitIntoR15(model, P, extras, root)
+	local torso, head = P.Torso, P.Head
+	local t, h = torso.Size, head.Size
+	local function seg(name, size, cf, like)
+		local part = Instance.new("Part")
+		part.Name = name
+		part.Size = size
+		part.CFrame = cf
+		part.Color = like.Color
+		part.Material = like.Material
+		part.Transparency = like.Transparency
+		part.Reflectance = like.Reflectance
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.CanCollide = false
+		part.Anchored = false
+		part.Parent = model
+		return part
+	end
+
+	-- torso: the whole old torso becomes UpperTorso; a thin invisible LowerTorso carries the hips and root
+	torso.Name = "UpperTorso"
+	local waistY = -t.Y / 2 + 0.5
+	local lower = seg("LowerTorso", Vector3.new(t.X, 0.5, t.Z), CFrame.new(0, -t.Y / 2 + 0.25, 0), torso)
+	lower.Transparency = 1
+	root.CFrame = lower.CFrame
+
+	local N = { UpperTorso = torso, LowerTorso = lower, Head = head }
+	local limbs = {} -- original limb part -> { segment parts by name, rest CFrame }
+	local function makeLimb(prefix, kind, side)
+		local src = P[(side == "Left" and "Left " or "Right ") .. kind]
+		local X, Y, Z = src.Size.X, src.Size.Y, src.Size.Z
+		local cx = src.Position.X
+		local top = src.Position.Y + Y / 2
+		local names, sizes
+		if kind == "Arm" then
+			names = { side .. "UpperArm", side .. "LowerArm", side .. "Hand" }
+			sizes = { 0.45 * Y, 0.45 * Y, 0.10 * Y }
+		else
+			names = { side .. "UpperLeg", side .. "LowerLeg", side .. "Foot" }
+			sizes = { 0.45 * Y, 0.30 * Y, 0.25 * Y }
+			-- (the foot is the bottom quarter of the leg; the shin takes the 0.30 in between)
+			sizes[2] = Y - sizes[1] - sizes[3]
+		end
+		local y = top
+		local rec = { src = src, rest = src.CFrame, segs = {}, tops = {} }
+		for i, name in ipairs(names) do
+			local sz = Vector3.new(X, sizes[i], Z)
+			local part = seg(name, sz, CFrame.new(cx, y - sizes[i] / 2, 0), src)
+			N[name] = part
+			rec.segs[i] = part
+			rec.tops[i] = y
+			y = y - sizes[i]
+		end
+		limbs[src] = rec
+		return rec
+	end
+	local arms = { Left = makeLimb("L", "Arm", "Left"), Right = makeLimb("R", "Arm", "Right") }
+	local legs = { Left = makeLimb("L", "Leg", "Left"), Right = makeLimb("R", "Leg", "Right") }
+
+	-- parts that rode on a limb now ride on the segment they sit on
+	for _, e in ipairs(extras) do
+		local rec = limbs[e.host]
+		if rec then
+			local world = rec.rest * e.offset
+			local y = world.Position.Y
+			local seg = rec.segs[#rec.segs]
+			for i, topY in ipairs(rec.tops) do
+				local bottom = topY - rec.segs[i].Size.Y
+				if y >= bottom - 1e-4 then
+					seg = rec.segs[i]
+					break
+				end
+			end
+			e.host = seg
+			e.offset = seg.CFrame:ToObjectSpace(world)
+		end
+	end
+
+	-- joints: all frames are axis-aligned, so each C0 / C1 is just the pivot expressed in that part's space
+	local function pivot(host, child, world, name)
+		motor(name, host, child, CFrame.new(host.CFrame:PointToObjectSpace(world)), CFrame.new(child.CFrame:PointToObjectSpace(world)))
+	end
+	motor("Root", root, lower, CFrame.new(), CFrame.new())
+	pivot(lower, torso, Vector3.new(0, waistY, 0), "Waist")
+	pivot(torso, head, Vector3.new(0, t.Y / 2, 0), "Neck")
+	for _, side in ipairs({ "Left", "Right" }) do
+		local a, l = arms[side], legs[side]
+		local ax = a.segs[1].Position.X
+		pivot(torso, a.segs[1], Vector3.new(ax, t.Y / 2 - 0.25, 0), side .. "Shoulder")
+		pivot(a.segs[1], a.segs[2], Vector3.new(ax, a.tops[2], 0), side .. "Elbow")
+		pivot(a.segs[2], a.segs[3], Vector3.new(ax, a.tops[3], 0), side .. "Wrist")
+		local lx = l.segs[1].Position.X
+		pivot(lower, l.segs[1], Vector3.new(lx, -t.Y / 2 + 0.1, 0), side .. "Hip")
+		pivot(l.segs[1], l.segs[2], Vector3.new(lx, l.tops[2], 0), side .. "Knee")
+		pivot(l.segs[2], l.segs[3], Vector3.new(lx, l.tops[3], 0), side .. "Ankle")
+	end
+	for _, rec in pairs(limbs) do
+		rec.src:Destroy()
+	end
+	return N
+end
+
+local function prepareR6(model, def)
 	local P = {}
 	for _, n in ipairs(R6_PARTS) do
 		P[n] = findPart(model, n)
@@ -241,6 +349,25 @@ local function prepareR6(model)
 	P["Left Arm"].CFrame = CFrame.new(-t.X / 2 - la.X / 2, 0, 0)
 	P["Right Leg"].CFrame = CFrame.new(rl.X / 2, -t.Y / 2 - rl.Y / 2, 0)
 	P["Left Leg"].CFrame = CFrame.new(-ll.X / 2, -t.Y / 2 - ll.Y / 2, 0)
+
+	if not def or def.splitLimbs ~= false then
+		-- bendable limbs: rebuild as an R15-style body (see splitIntoR15)
+		local names = splitIntoR15(model, P, extras, root)
+		for _, part in pairs(names) do
+			part.Anchored = false
+			part.CanCollide = false
+		end
+		attachExtras(extras)
+		removeEmptyContainers(model)
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		if not hum then
+			hum = Instance.new("Humanoid")
+			hum.Parent = model
+		end
+		hum.RigType = Enum.HumanoidRigType.R15
+		model.PrimaryPart = root
+		return true
+	end
 
 	local r90, l90 = CFrame.Angles(0, math.rad(90), 0), CFrame.Angles(0, math.rad(-90), 0)
 	motor("RootJoint", root, torso, ROOT_ROT, ROOT_ROT)
@@ -470,7 +597,7 @@ function ImportedFighters.build(def, displayName)
 	if findPart(model, "UpperTorso") and findPart(model, "LowerTorso") then
 		ok, why = prepareR15(model)
 	elseif hasR6 then
-		ok, why = prepareR6(model)
+		ok, why = prepareR6(model, def)
 	else
 		ok, why = prepareFitted(model, def)
 	end

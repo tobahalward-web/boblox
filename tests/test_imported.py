@@ -64,12 +64,12 @@ class Imported(unittest.TestCase):
         self.part(m, "FloatingPad", (1, 1, 1), at(sx * 1.4 * s, 0.4 * s, 0))
         return m
 
-    def def_for(self, asset):
-        return self.g.lua.table_from({"id": "T_" + asset, "asset": asset, "name": asset, "palettes": self.g.lua.table_from({1: self.g.lua.table_from({"glow": self.g.env.Color3.new(1, 0.5, 0)})})})
+    def def_for(self, asset, split=False):
+        return self.g.lua.table_from({"id": "T_" + asset, "asset": asset, "name": asset, "splitLimbs": split, "palettes": self.g.lua.table_from({1: self.g.lua.table_from({"glow": self.g.env.Color3.new(1, 0.5, 0)})})})
 
-    def built(self, name, **kw):
+    def built(self, name, split=False, **kw):
         self.make_r6(name, **kw)
-        model = self.IF.build(self.def_for(name), "Tester")
+        model = self.IF.build(self.def_for(name, split), "Tester")
         self.assertIsNotNone(model, f"{name} failed to build")
         return model
 
@@ -205,6 +205,69 @@ class Imported(unittest.TestCase):
         res = self.IF.build(d, "x")
         self.assertIsNone(res[0] if isinstance(res, tuple) else res)  # the loader itself only tries one asset...
         self.assertEqual(self.FM.get("GOR").assetFallback, "LUFFY")  # ...FighterModels.build does the fallback
+
+    # ---- bendable limbs (R6 body split into an R15-style body) -----------------------------------
+    R15_PARTS = ["Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand",
+                 "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot", "HumanoidRootPart"]
+
+    def test_split_body_is_a_full_r15_rig(self):
+        m = self.built("SPL1", split=True)
+        names = {x.Name for x in lua_list(m.GetDescendants(m)) if x.IsA(x, "BasePart")}
+        self.assertTrue(set(self.R15_PARTS) <= names, set(self.R15_PARTS) - names)
+        self.assertNotIn("Torso", names)
+        self.assertNotIn("Left Arm", names)
+        joints = {x.Name for x in lua_list(m.GetDescendants(m)) if x.IsA(x, "Motor6D")}
+        for j in ("Root", "Waist", "Neck", "LeftShoulder", "LeftElbow", "LeftWrist", "LeftHip", "LeftKnee", "LeftAnkle",
+                  "RightShoulder", "RightElbow", "RightWrist", "RightHip", "RightKnee", "RightAnkle"):
+            self.assertIn(j, joints)
+        info = self.Rig.measure(m)
+        self.assertTrue(info and not info.r6)
+
+    def test_split_limbs_keep_the_original_length(self):
+        m = self.built("SPL2", split=True)
+        def total(*ns):
+            return sum(m.FindFirstChild(m, n).Size.Y for n in ns)
+        self.assertAlmostEqual(total("LeftUpperLeg", "LeftLowerLeg", "LeftFoot"), 2.0, places=3)
+        self.assertAlmostEqual(total("RightUpperArm", "RightLowerArm", "RightHand"), 2.0, places=3)
+
+    def test_split_body_rests_in_the_standard_layout(self):
+        m = self.built("SPL3", split=True, yaw=40)
+        root = m.PrimaryPart
+        info = self.Rig.measure(m)
+        self.Rig.poseStatic(info, self.Poses.DEFAULT, self.CF.new(0, info.hipCenter, 0))  # any pose must apply
+        self.Rig.clear(info)
+
+    def test_split_knees_bend_in_the_stance(self):
+        m = self.built("SPL4", split=True)
+        info = self.Rig.measure(m)
+        st = self.g.lua.table_from({"state": "Idle", "t": 0, "vy": 0, "h": 0, "walk": 0, "variant": 0, "poseVar": 1})
+        self.Rig.poseStatic(info, self.Poses.evaluate(st, 0.3), self.CF.new(0, info.hipCenter, 0))
+        def angle(motor):
+            return math.degrees(math.acos(max(-1, min(1, (motor.C0.r[1] + motor.C0.r[5] + motor.C0.r[9] - 1) / 2))))
+        knees = [angle(m.FindFirstChild(m, n).FindFirstChild(m.FindFirstChild(m, n), j)) for n, j in (("LeftLowerLeg", "LeftKnee"), ("RightLowerLeg", "RightKnee"))]
+        elbows = [angle(m.FindFirstChild(m, n).FindFirstChild(m.FindFirstChild(m, n), j)) for n, j in (("LeftLowerArm", "LeftElbow"), ("RightLowerArm", "RightElbow"))]
+        self.assertGreater(max(knees), 20, "at least one knee bends in the stance")
+        self.assertGreater(min(elbows), 60, "the guard folds both elbows")
+
+    def test_split_feet_stay_on_the_floor(self):
+        m = self.built("SPL5", split=True)
+        info = self.Rig.measure(m)
+        for state in ("Idle", "WalkF", "Crouch", "Blockstun"):
+            st = self.g.lua.table_from({"state": state, "t": 0.1, "vy": 0, "h": 0, "walk": 0, "variant": 0, "poseVar": 1})
+            self.Rig.poseStatic(info, self.Poses.evaluate(st, 0.3), self.CF.new(0, info.hipCenter, 0))
+            low = min(m.FindFirstChild(m, n).Position.Y - m.FindFirstChild(m, n).Size.Y / 2 for n in ("LeftFoot", "RightFoot"))
+            self.assertLess(abs(low), 0.6, f"{state}: lowest foot {low:.2f}")
+
+    def test_split_moves_limb_extras_to_the_right_segment(self):
+        CF, mul = self.CF, self.mul
+        m = self.make_r6("SPL6")
+        arm = m.FindFirstChild(m, "Right Arm").CFrame
+        # a cuff at the very bottom of the right arm and a pauldron near the top (measured along the arm itself)
+        self.part(m, "Cuff", (1, 0.2, 1), mul(arm, CF.new(0, -0.92, 0)))
+        self.part(m, "Pauldron", (1, 0.2, 1), mul(arm, CF.new(0, 0.9, 0)))
+        model = self.IF.build(self.def_for("SPL6", True), "Tester")
+        self.assertEqual(model.FindFirstChild(model, "Cuff", True).Parent.Name, "RightHand")
+        self.assertEqual(model.FindFirstChild(model, "Pauldron", True).Parent.Name, "RightUpperArm")
 
     def test_every_pose_applies_without_error(self):
         m = self.built("R6G")
