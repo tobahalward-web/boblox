@@ -12,8 +12,10 @@ local Rig = require(Shared:WaitForChild("Rig"))
 local FighterModels = require(Shared:WaitForChild("FighterModels"))
 
 local Fighters = {}
+Fighters.onChallenge = nil -- function(challenger, target): set by MatchService
 
 local GROUP = "Fighters"
+local HUB_GROUP = "HubWalkers" -- a hub character's root: bumps into the scenery, walks through other players
 
 function Fighters.init()
 	pcall(function()
@@ -22,6 +24,14 @@ function Fighters.init()
 	pcall(function()
 		PhysicsService:CollisionGroupSetCollidable(GROUP, "Default", false)
 		PhysicsService:CollisionGroupSetCollidable(GROUP, GROUP, false)
+	end)
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(HUB_GROUP)
+	end)
+	pcall(function()
+		PhysicsService:CollisionGroupSetCollidable(HUB_GROUP, "Default", true)
+		PhysicsService:CollisionGroupSetCollidable(HUB_GROUP, HUB_GROUP, false)
+		PhysicsService:CollisionGroupSetCollidable(HUB_GROUP, GROUP, false)
 	end)
 	local bots = workspace:FindFirstChild("Bots")
 	if not bots then
@@ -210,6 +220,112 @@ function Fighters.createBot(name, fighterId, palette)
 		end)
 	end
 	return model
+end
+
+------------------------------------------------------------------------------------------
+-- hub mode
+------------------------------------------------------------------------------------------
+-- In the hub a fighter walks around like a normal Roblox character: the Humanoid runs its own physics
+-- (default controls + camera on the owner's client) instead of the fight Motor. `cf` is a floor-level
+-- CFrame (position on the floor, facing the way the character should look).
+function Fighters.enterHub(model, player, cf)
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then
+		return
+	end
+	local hip = model:GetAttribute("HipCenter") or 3
+	local vf = root:FindFirstChild("AntiGravity")
+	if vf then
+		vf.Enabled = false
+	end
+	root.Anchored = true
+	model:PivotTo(cf * CFrame.new(0, hip + 0.15, 0))
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.CanCollide = true
+	root.CanQuery = true
+	root.CollisionGroup = HUB_GROUP
+	pcall(function()
+		hum.EvaluateStateMachine = true
+	end)
+	hum.AutoRotate = true
+	hum.PlatformStand = false
+	hum.HipHeight = math.max(0.1, hip - root.Size.Y / 2)
+	hum.WalkSpeed = Config.Hub.walkSpeed
+	hum.UseJumpPower = true
+	hum.JumpPower = Config.Hub.jumpPower
+	model:SetAttribute("S", "Relax")
+	model:SetAttribute("Hub", true)
+	-- Stay anchored for a moment: right after a fight the owner's client can still be running its fight
+	-- Motor for a frame or two and would drag the character back to the arena. Then place it again
+	-- (so the hub position is the last word) and hand it to the player.
+	local token = (model:GetAttribute("HubToken") or 0) + 1
+	model:SetAttribute("HubToken", token)
+	task.delay(0.6, function()
+		if model.Parent and root.Parent and model:GetAttribute("Hub") == true and model:GetAttribute("HubToken") == token then
+			model:PivotTo(cf * CFrame.new(0, hip + 0.15, 0))
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.Anchored = false
+			if player then
+				pcall(function()
+					root:SetNetworkOwner(player)
+				end)
+			end
+		end
+	end)
+	-- other players can walk up and challenge this one (the owner's client hides its own prompt)
+	local prompt = root:FindFirstChild("IC_Challenge")
+	if not prompt and player then
+		prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "IC_Challenge"
+		prompt.ActionText = "Challenge"
+		prompt.ObjectText = player.DisplayName
+		prompt.KeyboardKeyCode = Enum.KeyCode.F
+		prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
+		prompt.HoldDuration = 0.35
+		prompt.MaxActivationDistance = 9
+		prompt.RequiresLineOfSight = false
+		prompt.UIOffset = Vector2.new(0, 40)
+		prompt.Parent = root
+		prompt.Triggered:Connect(function(by)
+			if by ~= player and Fighters.onChallenge then
+				Fighters.onChallenge(by, player)
+			end
+		end)
+	end
+	if prompt then
+		prompt.Enabled = true
+	end
+end
+
+-- back to fight mode (the Motor drives the root; the Humanoid stops simulating)
+function Fighters.leaveHub(model)
+	if not model or model:GetAttribute("Hub") ~= true then
+		return
+	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	model:SetAttribute("Hub", false)
+	if root then
+		local vf = root:FindFirstChild("AntiGravity")
+		if vf then
+			vf.Enabled = true
+		end
+		root.CanCollide = false
+		root.CanQuery = false
+		root.CollisionGroup = GROUP
+		local prompt = root:FindFirstChild("IC_Challenge")
+		if prompt then
+			prompt.Enabled = false
+		end
+	end
+	if hum then
+		hum.AutoRotate = false
+		pcall(function()
+			hum.EvaluateStateMachine = false
+		end)
+	end
+	model:SetAttribute("S", "Idle")
 end
 
 function Fighters.place(model, feetPos, yaw)

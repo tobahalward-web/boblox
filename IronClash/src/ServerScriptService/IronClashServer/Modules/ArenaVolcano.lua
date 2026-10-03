@@ -148,7 +148,8 @@ return function(model, O, half)
 			if i % 5 < 3 then
 				block(cliff, cf, V(sz, sz * rng:NextNumber(0.5, 0.9), sz * rng:NextNumber(0.7, 1.1)), rockColor(), (i % 3 == 0) and M.Rock or M.Basalt)
 			else
-				ell(cliff, cf, V(sz, sz * rng:NextNumber(0.55, 0.9), sz * rng:NextNumber(0.7, 1.1)), rockColor(), M.Basalt)
+				-- chipped, faceted boulders (two blocks at 45 degrees) rather than smooth pebbles
+				Kit.rock(cliff, cf.Position, V(sz, sz * rng:NextNumber(0.55, 0.9), sz * rng:NextNumber(0.7, 1.1)), rockColor(), M.Basalt, rng)
 			end
 		end
 		-- columnar basalt around the rim
@@ -193,8 +194,10 @@ return function(model, O, half)
 			local a, r = rng:NextNumber(0, math.pi * 2), rng:NextNumber(52, 230)
 			local w, d = rng:NextNumber(8, 28), rng:NextNumber(8, 28)
 			local cf = CFrame.new(O + V(math.cos(a) * r, -25.6 + k * 0.01, math.sin(a) * r)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0)
-			ell(sea, cf, V(w * 1.08, 0.5, d * 1.08), C(255, 120, 30), M.Neon, { CastShadow = false })
-			ell(sea, cf * CFrame.new(0, 0.18, 0), V(w, 0.8, d), C(36, 30, 28), M.CrackedLava, { CastShadow = false })
+			-- angular slabs: a glowing rim under a dark crust, a second slab turned 45 degrees for broken edges
+			block(sea, cf, V(w * 1.08, 0.5, d * 1.08), C(255, 120, 30), M.Neon, { CastShadow = false })
+			block(sea, cf * CFrame.new(0, 0.18, 0), V(w, 0.8, d), C(36, 30, 28), M.CrackedLava, { CastShadow = false })
+			block(sea, cf * CFrame.new(0, 0.2, 0) * CFrame.Angles(0, math.rad(45), 0), V(w * 0.72, 0.8, d * 0.72), C(42, 34, 30), M.CrackedLava, { CastShadow = false })
 		end
 		-- embers drifting up from the surface
 		for k = 1, 9 do
@@ -336,6 +339,129 @@ return function(model, O, half)
 		for k = -2, 2 do
 			Kit.rope(fort, base + V(k * 12 - 4, 17, 8), base + V(k * 12 + 4, 17, 8), 2.2, 0.28, ironDark, M.Metal, 6, { CastShadow = false })
 		end
+	end)
+
+	------------------------------------------------------------------------------------
+	-- atmosphere: ambient ash, cinder drift, warm glow, extra steam, sparks
+	------------------------------------------------------------------------------------
+	safe("atmosphere", function()
+		local atmo = Kit.model(model, "Atmosphere")
+		-- ambient ash drifting across the whole arena
+		local ashAnchor = Kit.anchor(atmo, O + V(0, 40, -40), V(200, 60, 200))
+		Kit.emitter(ashAnchor, {
+			Texture = Kit.TEX_SOFT, Rate = 18, Lifetime = NumberRange.new(12, 18), Speed = NumberRange.new(1, 3), SpreadAngle = Vector2.new(40, 40),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 3.5) }),
+			Color = ColorSequence.new(C(60, 54, 50), C(30, 26, 24)), LightInfluence = 0.4,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(0.5, 0.7), NumberSequenceKeypoint.new(1, 1) }),
+			Acceleration = Vector3.new(3, -0.8, 1.5), EmissionDirection = Enum.NormalId.Top, Rotation = NumberRange.new(0, 360),
+			RotSpeed = NumberRange.new(-15, 15),
+		})
+		-- warm ambient glow lights around the arena perimeter
+		for i = 1, 6 do
+			local a = i / 6 * math.pi * 2 + 0.4
+			local p = Kit.anchor(atmo, O + V(math.cos(a) * 45, 5, math.sin(a) * 45))
+			Kit.light(p, C(255, 100, 40), 30, 0.8)
+		end
+		-- lava bubble emitters on the sea surface
+		for i = 1, 6 do
+			local a = i / 6 * math.pi * 2 + 0.17
+			local r = rng:NextNumber(60, 180)
+			local bubbleAnchor = Kit.anchor(atmo, O + V(math.cos(a) * r, -25.5, math.sin(a) * r), V(20, 1, 20))
+			Kit.emitter(bubbleAnchor, {
+				Texture = Kit.TEX_SOFT, Rate = 4, Lifetime = NumberRange.new(2, 4), Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(10, 10),
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(0.7, 1.2), NumberSequenceKeypoint.new(1, 0) }),
+				Color = ColorSequence.new(C(255, 120, 30), C(255, 60, 10)), LightEmission = 1, LightInfluence = 0.1,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.8, 0.3), NumberSequenceKeypoint.new(1, 1) }),
+				Acceleration = Vector3.new(0, 0.3, 0), EmissionDirection = Enum.NormalId.Top,
+			})
+		end
+		-- extra steam vents on the mesa slopes
+		for i = 1, 8 do
+			local a = i / 8 * math.pi * 2 + 0.6
+			local r = rng:NextNumber(28, 46)
+			local ventY = -3 - rng:NextNumber(2, 14)
+			local ventAnchor = Kit.anchor(atmo, O + V(math.cos(a) * r, ventY, math.sin(a) * r), V(4, 1, 4))
+			Kit.steam(ventAnchor, C(160, 140, 130), 6, 4, 4)
+		end
+		-- sparks near the corner braziers
+		for _, cornerData in ipairs({
+			{ half + 0.7, half + 0.7 }, { -(half + 0.7), half + 0.7 },
+			{ half + 0.7, -(half + 0.7) }, { -(half + 0.7), -(half + 0.7) },
+		}) do
+			local sparkAnchor = Kit.anchor(atmo, O + V(cornerData[1], 7, cornerData[2]), V(2, 1, 2))
+			Kit.embers(sparkAnchor, C(255, 200, 100), C(255, 80, 10), 8, 3)
+		end
+	end)
+
+	safe("forgeprops", function()
+		local props = Kit.model(model, "ForgeProps")
+		local baseZ = O.Z - 100
+		local baseY = O.Y - 2.6
+		-- anvil stands near the fortress
+		for _, pos in ipairs({
+			{ O.X - 20, baseZ + 26 }, { O.X + 22, baseZ + 30 }, { O.X - 16, baseZ + 14 },
+		}) do
+			local p = V(pos[1], baseY, pos[2])
+			-- anvil stand
+			block(props, CFrame.new(p + V(0, 0.8, 0)), V(1.4, 1.6, 1.4), C(48, 42, 44), M.Basalt)
+			block(props, CFrame.new(p + V(0, 1.7, 0)), V(3.2, 0.6, 1.6), ironDark, M.Metal)
+			block(props, CFrame.new(p + V(0, 2.1, 0)), V(2.6, 0.5, 1.2), iron, M.Metal)
+			ell(props, CFrame.new(p + V(1.4, 2.0, 0)), V(1.0, 0.5, 1.0), iron, M.Metal)
+		end
+		-- iron ingot stacks
+		for _, pos in ipairs({
+			{ O.X - 26, baseZ + 22 }, { O.X + 18, baseZ + 18 }, { O.X + 30, baseZ + 24 },
+		}) do
+			local p = V(pos[1], baseY, pos[2])
+			for stack = 0, 2 do
+				for layer = 0, 1 do
+					block(props, CFrame.new(p + V(stack * 1.6, 0.4 + layer * 0.6, 0)), V(1.4, 0.5, 2.0), C(60 + layer * 10, 54, 56), M.Metal, { CastShadow = false })
+				end
+			end
+		end
+		-- crates and barrels near the causeway
+		for _, pos in ipairs({
+			{ O.X + 12, baseZ + 10 }, { O.X - 10, baseZ + 8 }, { O.X + 6, baseZ + 16 },
+		}) do
+			local p = V(pos[1], baseY, pos[2])
+			local s = rng:NextNumber(1.2, 1.8)
+			block(props, CFrame.new(p + V(0, s / 2, 0)) * CFrame.Angles(0, rng:NextNumber(0, 0.3), 0), V(s, s, s), C(84, 64, 44), M.Wood)
+			block(props, CFrame.new(p + V(0, s / 2, 0)) * CFrame.Angles(0, rng:NextNumber(0, 0.3), 0), V(s + 0.08, 0.14, s + 0.08), C(52, 38, 28), M.Wood, { CastShadow = false })
+		end
+		-- barrels
+		for _, pos in ipairs({
+			{ O.X - 14, baseZ + 12 }, { O.X + 16, baseZ + 6 },
+		}) do
+			local p = V(pos[1], baseY, pos[2])
+			vcyl(props, p + V(0, 0.9, 0), 1.8, 1.4, C(70, 50, 38), M.Wood)
+			for _, y in ipairs({ 0.3, 0.9, 1.5 }) do
+				vcyl(props, p + V(0, y, 0), 0.12, 1.5, C(40, 28, 20), M.Wood, { CastShadow = false })
+			end
+		end
+		-- tool rack with hanging tools
+		local rackPos = V(O.X - 24, baseY, baseZ + 20)
+		block(props, CFrame.new(rackPos + V(0, 1.6, 0)), V(0.3, 3.2, 0.3), darkWood and C(60, 48, 40) or C(60, 48, 40), M.Wood)
+		block(props, CFrame.new(rackPos + V(0, 3.0, 0)), V(3.0, 0.3, 0.3), C(60, 48, 40), M.Wood)
+		for k = -1, 1 do
+			-- hanging hammer
+			local hp = rackPos + V(k * 0.8, 3.0, 0)
+			rod(props, hp, hp + V(0, -1.2, 0), 0.08, C(50, 40, 32), M.Wood, { CastShadow = false })
+			block(props, CFrame.new(hp + V(0, -1.3, 0)), V(0.5, 0.3, 0.5), ironDark, M.Metal, { CastShadow = false })
+		end
+		-- wagon wheel halves leaning against the fortress wall
+		for _, sx in ipairs({ -1, 1 }) do
+			local wp = V(O.X + sx * 30, baseY, baseZ + 24)
+			cyl(props, CFrame.new(wp + V(0, 1.4, 0)) * CFrame.Angles(0, 0, math.rad(90)) * CFrame.Angles(math.rad(20), 0, 0), 0.4, 2.6, iron, M.Metal, { CastShadow = false })
+			for spoke = 0, 5 do
+				local a = spoke / 6 * math.pi * 2
+				rod(props, wp + V(0, 1.4, 0), wp + V(math.cos(a) * 1.2, 1.4 + math.sin(a) * 1.2 * math.cos(math.rad(20)), 0), 0.12, ironDark, M.Metal, { CastShadow = false })
+			end
+		end
+		-- glowing forge furnace inside the gate arch (visible glow)
+		local furnaceGlow = block(props, CFrame.new(V(O.X, baseY + 2.5, baseZ + 12)) * CFrame.Angles(0, math.rad(90), 0), V(1.6, 2.0, 1.6), C(255, 100, 20), M.Neon, { CastShadow = false, Transparency = 0.3 })
+		Kit.light(furnaceGlow, C(255, 120, 40), 16, 1.8)
+		local furnaceAnchor = Kit.anchor(props, V(O.X, baseY + 3.5, baseZ + 12), V(2, 1, 2))
+		Kit.embers(furnaceAnchor, C(255, 200, 80), C(255, 60, 10), 12, 4)
 	end)
 
 	------------------------------------------------------------------------------------

@@ -402,9 +402,10 @@ function Rig.apply(info, P)
 	local ltCF = info.rootC0 * actualRoot * info.rootC1i
 	local ground = info.ground
 
-	-- Rigs that are not the game's own skeleton (imported R15 bodies) use a slightly shorter front-to-back stride:
-	-- their legs are a little shorter than the procedural fighters', and the full stride reads like the splits.
-	local stride = info.j.chest and 1 or 0.8
+	-- Bodies that are not the game's own procedural fighters (imported models, player avatars) use a slightly
+	-- shorter front-to-back stride: their legs are a little shorter than the procedural fighters', and the full
+	-- stride reads like the splits. (Imported models now carry the split spine too, so check the attribute.)
+	local stride = (info.j.chest and not info.char:GetAttribute("Imported")) and 1 or 0.8
 	local sides = {
 		{ leg = info.L, w = P.lik, fx = P.lfx, fz = P.lfz * stride, fy = P.lfy, fr = P.lfr, fp = P.lfp or 0,
 			hx = P.lhx, hy = P.lhy, hz = P.lhz, kx = P.lkx, ax = P.lax, keys = { "lh", "lk", "la" }, toe = "lto" },

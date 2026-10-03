@@ -1,6 +1,11 @@
 -- IRON CLASH :: matchmaking, rounds and authoritative combat
--- * Players queue with "FIGHT". Two humans get paired; a lone human fights the CPU and is
+-- * Players live in the hub (Modules/Hub) between fights and start everything from its stations:
+--   PvP arena queue, Battle Tower, Practice Dojo (combo trials / free practice), fighter select.
+--   They can also challenge each other directly in the hub.
+-- * Players queue at the PvP arena. Two humans get paired; a lone human fights the CPU and is
 --   interrupted arcade-style ("HERE COMES A NEW CHALLENGER!") when another human queues.
+-- * Battle Tower (mode "tower"): endless CPU floors that get harder; a loss ends the run.
+-- * Combo trials run inside practice matches and are checked here, against the real hits.
 -- * Each match owns an arena, runs best-of-3 rounds with a timer, and validates every attack.
 -- * Movement is simulated by the owner (client for players, this server for CPU fighters);
 --   hits, damage, stun and KOs are decided here.
@@ -21,6 +26,7 @@ local Combat = require(Modules:WaitForChild("Combat"))
 local BotAI = require(Modules:WaitForChild("BotAI"))
 local Fighters = require(Modules:WaitForChild("Fighters"))
 local Stats = require(Modules:WaitForChild("Stats"))
+local Hub = require(Modules:WaitForChild("Hub"))
 
 local MatchService = {}
 
@@ -157,6 +163,42 @@ local function ensureCharacter(player)
 	return char
 end
 
+-- where each mode drops players back into the hub
+local HUB_SPOT = { pvp = "arena", cpu = "arena", tower = "tower", practice = "dojo" }
+local hubSeq = 0
+
+-- Put a player (back) into the hub as a walking character. `where` picks the arrival spot
+-- ("arena" | "tower" | "dojo" | "select" | nil = by the fountain); `keepCF` keeps an exact spot.
+local function toHub(player, where, keepCF)
+	if not alive(player) then
+		return
+	end
+	local ps = pstate[player]
+	if ps then
+		ps.mode = "menu"
+		ps.match = nil
+	end
+	local char = ensureCharacter(player)
+	hubSeq = hubSeq + 1
+	Fighters.enterHub(char, player, keepCF or Hub.cframeFor(where, hubSeq))
+	send(player, "Hub", { tower = Stats.towerBest(player) })
+end
+
+-- redraw the tower leaderboard in the hub (yields while the DataStore answers)
+local function refreshBoard()
+	task.spawn(function()
+		local ok, list = pcall(Stats.topTower, 10)
+		if ok and list then
+			pcall(Hub.setLeaderboard, list)
+		end
+	end)
+end
+
+-- CPU level for a tower floor: one step tougher every Config.Tower.floorsPerLevel floors, capped
+local function towerLevel(floor)
+	return math.clamp(1 + math.floor((floor - 1) / Config.Tower.floorsPerLevel), 1, #Config.CPU)
+end
+
 local function lockFighter(F, locked)
 	F.locked = locked
 	if F.motor then
@@ -253,6 +295,7 @@ local function newFighter(m, idx, player, botName, botFighter, botPalette)
 	}
 	if player then
 		F.char = ensureCharacter(player)
+		Fighters.leaveHub(F.char)
 		F.name = player.DisplayName
 		F.userId = player.UserId
 	else
@@ -327,7 +370,7 @@ startRound = function(m)
 	resetRoundStats(m)
 	lockAll(m, true)
 	placeFighters(m)
-	local final = (m.F[1].wins == Config.RoundsToWin - 1) and (m.F[2].wins == Config.RoundsToWin - 1)
+	local final = (m.F[1].wins == m.roundsToWin - 1) and (m.F[2].wins == m.roundsToWin - 1)
 	setPhase(m, "Round", Config.RoundCallTime, { round = m.round, final = final })
 end
 
@@ -375,7 +418,7 @@ endRound = function(m)
 		setAttr(m, "W" .. w, F.wins)
 	end
 	for _, F in ipairs(m.F) do
-		if F.wins >= Config.RoundsToWin then
+		if F.wins >= m.roundsToWin then
 			matchEnd(m, F.idx)
 			return
 		end
@@ -405,6 +448,18 @@ matchEnd = function(m, winnerIdx)
 						ps.cpuLevel = math.max(1, ps.cpuLevel - 1)
 					end
 				end
+				if ps and m.mode == "tower" then
+					if F == W then
+						-- floor cleared: remember it and line up the next one
+						m.newBest = Stats.towerCleared(F.player, m.floor)
+						ps.tower = { floor = m.floor + 1 }
+						if m.newBest then
+							refreshBoard()
+						end
+					else
+						ps.tower = nil -- run over
+					end
+				end
 			end
 		end
 	end
@@ -422,6 +477,9 @@ local function showResults(m)
 				cpuLevel = ps and ps.cpuLevel or 1,
 				wins = F.wins,
 				oppWins = other(m, F).wins,
+				floor = m.floor,
+				best = Stats.towerBest(F.player),
+				newBest = m.newBest == true,
 			})
 		end
 	end
@@ -445,6 +503,83 @@ local function advance(m)
 end
 
 ------------------------------------------------------------------------------------------
+-- combo trials (practice matches only)
+------------------------------------------------------------------------------------------
+-- m.trial = { index = which Moves.Combos entry, step = next step expected (1-based), cleared, lastHit }
+-- A step only counts when that exact move lands as the next hit of one unbroken combo.
+local function trialSend(m, extra)
+	local P = m.F[1] and m.F[1].player
+	if not P then
+		return
+	end
+	local T = m.trial
+	local d = { on = T ~= nil, total = #Moves.Combos }
+	if T then
+		d.index, d.step, d.cleared = T.index, T.step, T.cleared == true
+	end
+	if extra then
+		for k, v in pairs(extra) do
+			d[k] = v
+		end
+	end
+	send(P, "Trial", d)
+end
+
+local function trialSet(m, index)
+	if type(index) == "number" and index >= 1 and index <= #Moves.Combos then
+		m.trial = { index = math.floor(index), step = 1 }
+		-- trials want a dummy that stands still and takes every hit
+		m.dummy = "Stand"
+		local bot = m.F[2]
+		if bot and bot.ai then
+			bot.ai:setMode("Stand")
+		end
+		setAttr(m, "Dummy", "Stand")
+	else
+		m.trial = nil
+	end
+	trialSend(m)
+end
+
+local function trialHit(m, A, id, t)
+	local T = m.trial
+	if not T or T.cleared or not A.player then
+		return
+	end
+	local combo = Moves.Combos[T.index]
+	local steps = combo and combo.steps
+	if not steps then
+		return
+	end
+	local was = T.step
+	if steps[T.step] == id and A.combo == T.step then
+		T.step = T.step + 1
+	elseif steps[1] == id and A.combo == 1 then
+		T.step = 2
+	else
+		T.step = 1
+	end
+	T.lastHit = t
+	if T.step > #steps then
+		T.cleared = true
+		local ps = pstate[A.player]
+		if ps then
+			ps.trialsCleared = ps.trialsCleared or {}
+			ps.trialsCleared[T.index] = true
+		end
+		trialSend(m, { justCleared = true })
+		local idx = T.index
+		task.delay(2.4, function()
+			if m.trial == T and not m.finished and idx < #Moves.Combos then
+				trialSet(m, idx + 1)
+			end
+		end)
+	else
+		trialSend(m, { dropped = was > 1 and T.step <= was })
+	end
+end
+
+------------------------------------------------------------------------------------------
 -- match lifecycle
 ------------------------------------------------------------------------------------------
 local function startMatch(mode, p1, p2, opts)
@@ -458,8 +593,14 @@ local function startMatch(mode, p1, p2, opts)
 	local m = {
 		id = nextId, mode = mode, arena = arena, phase = "Setup", round = 0, timer = Config.RoundTime,
 		ts = 1, phaseEnd = math.huge, cpuLevel = opts.cpuLevel or 1, votes = {}, spectators = {},
-		dummy = opts.dummy or "Stand",
+		dummy = opts.dummy or "Stand", floor = opts.floor,
+		roundsToWin = (mode == "tower") and Config.Tower.roundsToWin or Config.RoundsToWin,
 	}
+	for _, p in ipairs({ p1, p2 }) do
+		if p and pstate[p] then
+			pstate[p].challenge = nil
+		end
+	end
 	-- CPU picks a different roster fighter than its opponent
 	local p1Fighter = pstate[p1] and pstate[p1].fighter or "KAI"
 	local choices = {}
@@ -510,8 +651,7 @@ local function startMatch(mode, p1, p2, opts)
 		end
 		for _, p in ipairs({ p1, p2 }) do
 			if p and pstate[p] then
-				pstate[p].mode = "menu"
-				send(p, "Menu", {})
+				pcall(toHub, p, HUB_SPOT[mode])
 			end
 		end
 		return nil
@@ -526,6 +666,9 @@ local function startMatch(mode, p1, p2, opts)
 	folder:SetAttribute("ArenaName", arena.name)
 	folder:SetAttribute("Max", Config.MaxHP)
 	folder:SetAttribute("CPU", m.cpuLevel)
+	if m.floor then
+		folder:SetAttribute("Floor", m.floor)
+	end
 	folder:SetAttribute("Phase", "Setup")
 	folder:SetAttribute("Round", 0)
 	folder:SetAttribute("TS", 1)
@@ -585,6 +728,7 @@ local function startMatch(mode, p1, p2, opts)
 				yaw = yaw,
 				seq = F.hitSeq,
 				cpuLevel = m.cpuLevel,
+				floor = m.floor,
 			})
 		end
 	end
@@ -595,6 +739,9 @@ local function startMatch(mode, p1, p2, opts)
 		setAttr(m, "Round", 1)
 		setAttr(m, "Timer", -1)
 		beginLive(m)
+		if opts.trials then
+			trialSet(m, opts.trialIndex or 1)
+		end
 	else
 		for _, F in ipairs(m.F) do
 			poseFighter(F, "Intro")
@@ -615,17 +762,30 @@ finishMatch = function(m, action)
 		if F.player then
 			if alive(F.player) then
 				hs[#hs + 1] = F.player
+			end
+		elseif F.char then
+			F.char:Destroy()
+		end
+	end
+	-- players going straight into another fight wait off-stage; everyone else walks back into the hub
+	local continuing = (action == "rematch" and #hs == 2)
+		or ((action == "continue" or action == "tower_next" or action == "tower_retry" or action == "challenger") and #hs == 1)
+	for _, F in ipairs(m.F) do
+		if F.player and alive(F.player) then
+			local ps = pstate[F.player]
+			if continuing then
 				slotCounter = slotCounter + 1
 				Fighters.park(F.char, slotCounter)
-				local ps = pstate[F.player]
 				if ps then
 					ps.mode = "menu"
 					ps.match = nil
 				end
-				send(F.player, "Menu", {})
+			else
+				if ps and m.mode == "tower" then
+					ps.tower = nil
+				end
+				toHub(F.player, HUB_SPOT[m.mode])
 			end
-		elseif F.char then
-			F.char:Destroy()
 		end
 	end
 	for _, p in ipairs(m.spectators) do
@@ -639,18 +799,45 @@ finishMatch = function(m, action)
 	end
 	m.arena.busy = false
 
+	-- a follow-up that can't start (no free arena) sends its players to the hub instead
+	local function startOrHub(mode, p1, p2, opts)
+		if startMatch(mode, p1, p2, opts) then
+			return true
+		end
+		for _, p in ipairs({ p1, p2 }) do
+			if p and pstate[p] and pstate[p].mode ~= "match" then
+				toHub(p, HUB_SPOT[mode])
+				send(p, "Status", { text = "ALL ARENAS ARE BUSY - TRY AGAIN IN A MOMENT" })
+			end
+		end
+		return false
+	end
 	if action == "rematch" and #hs == 2 then
-		startMatch("pvp", hs[1], hs[2])
+		startOrHub("pvp", hs[1], hs[2])
 	elseif action == "continue" and #hs == 1 then
 		local ps = pstate[hs[1]]
-		startMatch("cpu", hs[1], nil, { cpuLevel = ps and ps.cpuLevel or 1 })
+		startOrHub("cpu", hs[1], nil, { cpuLevel = ps and ps.cpuLevel or 1 })
+	elseif (action == "tower_next" or action == "tower_retry") and #hs == 1 then
+		local ps = pstate[hs[1]]
+		if ps then
+			if action == "tower_retry" or not ps.tower then
+				ps.tower = { floor = 1 }
+			end
+			local floor = ps.tower.floor
+			if not startOrHub("tower", hs[1], nil, { cpuLevel = towerLevel(floor), floor = floor }) then
+				ps.tower = nil
+			end
+		end
 	elseif action == "challenger" and #hs == 1 then
 		local challenger = m.interrupted
 		if alive(challenger) and pstate[challenger] and pstate[challenger].mode == "pending" then
 			pstate[challenger].mode = "menu"
 			if not startMatch("pvp", challenger, hs[1]) then
+				toHub(hs[1], "arena")
 				MatchService.requestFight(challenger)
 			end
+		else
+			toHub(hs[1], "arena")
 		end
 	end
 	processQueue()
@@ -742,13 +929,88 @@ function MatchService.requestFight(player)
 	spectateSomething(player)
 end
 
-function MatchService.requestPractice(player, dummy)
+function MatchService.requestPractice(player, dummy, trials)
 	local ps = pstate[player]
 	if not ps or ps.mode ~= "menu" or not hasCharacter(player) then
 		return
 	end
-	if not startMatch("practice", player, nil, { dummy = dummy or "Stand" }) then
+	removeFromQueue(player)
+	if not startMatch("practice", player, nil, { dummy = dummy or "Stand", trials = trials == true }) then
 		send(player, "Status", { text = "NO FREE ARENA RIGHT NOW - TRY AGAIN SOON" })
+	end
+end
+
+-- Battle Tower: a fresh run starts on floor 1
+function MatchService.requestTower(player)
+	local ps = pstate[player]
+	if not ps or ps.mode ~= "menu" or not hasCharacter(player) then
+		return
+	end
+	removeFromQueue(player)
+	ps.tower = { floor = 1 }
+	if not startMatch("tower", player, nil, { cpuLevel = towerLevel(1), floor = 1 }) then
+		ps.tower = nil
+		send(player, "Status", { text = "NO FREE ARENA RIGHT NOW - TRY AGAIN SOON" })
+	end
+end
+
+-- Hub challenges: `from` walked up to `to` and pressed the challenge prompt
+function MatchService.challenge(from, to)
+	local a, b = pstate[from], pstate[to]
+	if from == to or not a or not b or not alive(to) then
+		return
+	end
+	if a.mode ~= "menu" then
+		return
+	end
+	if b.mode ~= "menu" then
+		send(from, "Status", { text = string.upper(to.DisplayName) .. " IS BUSY RIGHT NOW" })
+		return
+	end
+	local t = now()
+	if b.challenge and alive(b.challenge.from) and t - b.challenge.t < Config.Hub.challengeTime then
+		if b.challenge.from == from then
+			return
+		end
+		send(from, "Status", { text = string.upper(to.DisplayName) .. " ALREADY HAS A CHALLENGE WAITING" })
+		return
+	end
+	b.challenge = { from = from, t = t }
+	local fdef = FighterModels.get(a.fighter)
+	send(to, "Challenge", {
+		name = from.DisplayName, userId = from.UserId, fighter = fdef and fdef.name or "THEIR AVATAR", time = Config.Hub.challengeTime,
+	})
+	send(from, "Status", { text = "CHALLENGE SENT TO " .. string.upper(to.DisplayName) .. " - WAITING FOR AN ANSWER" })
+end
+
+function MatchService.answerChallenge(player, accept, timedOut)
+	local ps = pstate[player]
+	local ch = ps and ps.challenge
+	if not ch then
+		return
+	end
+	ps.challenge = nil
+	local from = ch.from
+	local fs = pstate[from]
+	if now() - ch.t > Config.Hub.challengeTime + 2 or not alive(from) or not fs then
+		send(player, "Status", { text = "THAT CHALLENGE EXPIRED" })
+		return
+	end
+	if accept ~= true then
+		send(from, "Status", { text = string.upper(player.DisplayName) .. (timedOut and " DIDN'T ANSWER YOUR CHALLENGE" or " DECLINED YOUR CHALLENGE") })
+		return
+	end
+	if ps.mode ~= "menu" or fs.mode ~= "menu" then
+		send(player, "Status", { text = "THEY'RE BUSY NOW - TRY AGAIN IN A MOMENT" })
+		return
+	end
+	removeFromQueue(player)
+	removeFromQueue(from)
+	send(from, "Status", { text = string.upper(player.DisplayName) .. " ACCEPTED - FIGHT!" })
+	if not startMatch("pvp", from, player) then
+		for _, p in ipairs({ from, player }) do
+			send(p, "Status", { text = "ALL ARENAS ARE BUSY - TRY AGAIN IN A MOMENT" })
+		end
 	end
 end
 
@@ -1060,6 +1322,9 @@ local function applyResult(m, A, V, d, res, t)
 		A.comboDmg = res.dmg
 	end
 	A.lastComboT = t
+	if m.trial then
+		trialHit(m, A, d.id, t)
+	end
 	local r = res.react
 	if r.kind == "launch" then
 		V.juggle = 0
@@ -1243,6 +1508,12 @@ local function stepMatch(m, dt, t)
 					setAttr(m, "HP" .. F.idx, F.hp)
 				end
 			end
+			-- combo trial: a string that stalls has dropped
+			local T = m.trial
+			if T and not T.cleared and T.step > 1 and T.lastHit and t - T.lastHit > 1.6 then
+				T.step = 1
+				trialSend(m, { dropped = true })
+			end
 		end
 	else
 		-- clear finished moves so nothing lingers between rounds
@@ -1325,10 +1596,19 @@ local function onNet(player, cmd, a, b, c)
 		end
 	elseif cmd == "Queue" then
 		if a == "practice" then
-			MatchService.requestPractice(player, type(b) == "string" and b or "Stand")
+			MatchService.requestPractice(player, type(b) == "string" and b or "Stand", c == true)
+		elseif a == "tower" then
+			MatchService.requestTower(player)
 		else
 			MatchService.requestFight(player)
 		end
+	elseif cmd == "Trial" then
+		local F, m = fighterOf(player)
+		if m and m.mode == "practice" then
+			trialSet(m, type(a) == "number" and a or nil)
+		end
+	elseif cmd == "ChallengeReply" then
+		MatchService.answerChallenge(player, a == true, b == true)
 	elseif cmd == "Cancel" then
 		local ps = pstate[player]
 		if ps and ps.mode == "queue" then
@@ -1360,6 +1640,9 @@ local function onNet(player, cmd, a, b, c)
 			m.votes[player] = true
 			if m.mode == "cpu" then
 				finishMatch(m, "continue")
+			elseif m.mode == "tower" then
+				local ps2 = pstate[player]
+				finishMatch(m, (ps2 and ps2.tower) and "tower_next" or "tower_retry")
 			elseif m.mode == "pvp" then
 				local n = 0
 				for _, p in ipairs(humans(m)) do
@@ -1377,7 +1660,7 @@ local function onNet(player, cmd, a, b, c)
 		local ps = pstate[player]
 		local m = ps and ps.match
 		if m then
-			if m.phase == "Results" or m.mode == "practice" or m.mode == "cpu" then
+			if m.phase == "Results" or m.mode == "practice" or m.mode == "cpu" or m.mode == "tower" then
 				finishMatch(m, nil)
 			end
 		end
@@ -1396,11 +1679,27 @@ local function onNet(player, cmd, a, b, c)
 		end
 		ps.fighter = a
 		ps.palette = pal
+		-- in the hub, the new fighter appears exactly where the old one was standing
+		local keep = nil
+		local old = player.Character
+		local oldRoot = old and old:FindFirstChild("HumanoidRootPart")
+		if oldRoot and old:GetAttribute("Hub") == true then
+			local look = oldRoot.CFrame.LookVector
+			look = Vector3.new(look.X, 0, look.Z)
+			if look.Magnitude < 0.1 then
+				look = Vector3.new(0, 0, -1)
+			end
+			local floorPos = oldRoot.Position - Vector3.new(0, old:GetAttribute("HipCenter") or 3, 0)
+			keep = CFrame.lookAt(floorPos, floorPos + look.Unit)
+		end
 		ps.spawning = true
 		local ok, err = pcall(spawnFor, player)
 		ps.spawning = false
 		if not ok then
 			warn("[IronClash] could not spawn fighter: " .. tostring(err))
+		end
+		if ps.mode == "menu" then
+			toHub(player, "select", keep)
 		end
 		send(player, "Selected", { id = a, palette = pal })
 	elseif cmd == "Keys" then
@@ -1416,7 +1715,10 @@ local function onNet(player, cmd, a, b, c)
 	elseif cmd == "Ready" then
 		local ps = pstate[player]
 		if ps and ps.mode == "menu" then
-			send(player, "Menu", {})
+			local c2 = player.Character
+			if c2 and c2:GetAttribute("Hub") == true then
+				send(player, "Hub", { tower = Stats.towerBest(player) })
+			end
 			send(player, "Selected", { id = ps.fighter, palette = ps.palette })
 		end
 		local keys = Stats.getKeybinds(player)
@@ -1437,6 +1739,8 @@ local function onPlayerAdded(player)
 	end)
 	task.spawn(function()
 		spawnFor(player)
+		toHub(player, nil)
+		refreshBoard()
 	end)
 	player.CharacterRemoving:Connect(function()
 		task.delay(2, function()
@@ -1444,6 +1748,9 @@ local function onPlayerAdded(player)
 				local ps = pstate[player]
 				if ps and ps.mode ~= "match" and not ps.spawning then
 					spawnFor(player)
+					if ps.mode == "menu" then
+						toHub(player, nil) -- fell out of the hub, or the character was removed
+					end
 				end
 			end
 		end)
@@ -1465,6 +1772,12 @@ local function onPlayerRemoving(player)
 				end
 			end
 			finishMatch(m, nil)
+		end
+	end
+	for p, other in pairs(pstate) do
+		if other.challenge and other.challenge.from == player then
+			other.challenge = nil
+			send(p, "ChallengeGone", {})
 		end
 	end
 	for _, m in pairs(matches) do
@@ -1511,6 +1824,39 @@ function MatchService.start()
 		local ok, err = pcall(onNet, player, cmd, a, b, c)
 		if not ok then
 			warn("[IronClash] net error: " .. tostring(err))
+		end
+	end)
+
+	-- hub stations and player-to-player challenges
+	Hub.onPrompt = function(kind, player)
+		local ps = pstate[player]
+		if not ps or ps.mode ~= "menu" then
+			return
+		end
+		if kind == "arena" then
+			send(player, "Status", { text = "SEARCHING FOR AN OPPONENT", searching = true })
+			MatchService.requestFight(player)
+		elseif kind == "tower" then
+			MatchService.requestTower(player)
+		elseif kind == "trials" then
+			MatchService.requestPractice(player, "Stand", true)
+		elseif kind == "practice" then
+			MatchService.requestPractice(player, "Stand", false)
+		elseif kind == "select" then
+			send(player, "OpenSelect", { id = ps.fighter, palette = ps.palette })
+		end
+	end
+	Fighters.onChallenge = function(from, to)
+		local ok, err = pcall(MatchService.challenge, from, to)
+		if not ok then
+			warn("[IronClash] challenge error: " .. tostring(err))
+		end
+	end
+	-- tower leaderboard: refreshed every minute (and straight away when someone sets a record)
+	task.spawn(function()
+		while true do
+			refreshBoard()
+			task.wait(60)
 		end
 	end)
 	Players.PlayerAdded:Connect(onPlayerAdded)

@@ -53,6 +53,21 @@ Themes.Presets = {
 		Clouds = { Cover = 0.65, Density = 0.6, Color = C(80, 50, 44) },
 		Particles = "embers",
 	},
+	Hub = {
+		-- golden-hour plaza: warm sun, cool shadows, a little haze so the far scenery fades out
+		ClockTime = 17.4, Brightness = 2.1, GeographicLatitude = 30,
+		Ambient = C(118, 112, 124), OutdoorAmbient = C(160, 152, 168),
+		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.05,
+		ColorShift_Top = C(255, 222, 186), ColorShift_Bottom = C(80, 70, 110),
+		Atmosphere = { Density = 0.26, Offset = 0.12, Color = C(226, 200, 196), Decay = C(150, 120, 160), Glare = 0.2, Haze = 1.1 },
+		Bloom = { Intensity = 0.35, Size = 24, Threshold = 1.8 },
+		CC = { Brightness = 0.02, Contrast = 0.05, Saturation = 0.08, TintColor = C(255, 246, 238) },
+		SunRays = { Intensity = 0.06, Spread = 0.6 },
+		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
+		Sky = { StarCount = 400, CelestialBodiesShown = true, SunAngularSize = 16 },
+		Clouds = { Cover = 0.55, Density = 0.4, Color = C(255, 214, 196) },
+		Particles = "petals",
+	},
 	Frozen = {
 		ClockTime = 10.5, Brightness = 1.8, GeographicLatitude = 50,
 		Ambient = C(126, 136, 156), OutdoorAmbient = C(170, 182, 204),

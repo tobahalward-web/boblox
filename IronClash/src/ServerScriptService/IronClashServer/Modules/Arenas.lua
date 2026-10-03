@@ -19,7 +19,7 @@ local BUILDERS = {
 }
 
 -- bump when the stage geometry changes: stages saved into a place by an older version get rebuilt
-Arenas.VERSION = 4
+Arenas.VERSION = 5
 
 local function terrain()
 	return workspace:FindFirstChildOfClass("Terrain")

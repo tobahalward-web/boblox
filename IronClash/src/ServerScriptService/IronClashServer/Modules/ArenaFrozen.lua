@@ -42,9 +42,9 @@ return function(model, O, half)
 			local h = rng:NextNumber(2.4, 5.2) * scale
 			local w = rng:NextNumber(0.7, 1.3) * scale
 			local dir = V(math.sin(lean) * math.cos(a), math.cos(lean), math.sin(lean) * math.sin(a))
-			local mid = p + dir * (h / 2)
-			local cf = CFrame.lookAt(mid, mid + dir) * CFrame.Angles(math.rad(90), 0, 0)
-			ell(parent, cf, V(w, h * 1.1, w), col or C(150, 214, 255), M.Ice, { Transparency = 0.2, Reflectance = 0.15, CastShadow = false })
+			-- a faceted prism with a chisel point, growing along `dir` from just under the ground
+			local cf = CFrame.lookAt(p, p + dir) * CFrame.Angles(-math.rad(90), 0, 0) * CFrame.new(0, -0.3 * scale, 0)
+			Kit.crystal(parent, cf, w, h * 1.1, col or C(150, 214, 255), M.Ice, { Reflectance = 0.15, CastShadow = false })
 		end
 	end
 
@@ -146,8 +146,8 @@ return function(model, O, half)
 			local rock = C(100 + rng:NextInteger(0, 20), 108 + rng:NextInteger(0, 18), 124 + rng:NextInteger(0, 14))
 			local yaw = rng:NextNumber(0, 3)
 			-- an irregular boulder: two overlapping ellipsoids and a snow cap
-			ell(field, CFrame.new(p + V(0, d * 0.28, 0)) * CFrame.Angles(0, yaw, 0), V(d, d * 0.72, d * 0.85), rock, M.Rock)
-			ell(field, CFrame.new(p + V(d * 0.22, d * 0.2, d * 0.18)) * CFrame.Angles(0, yaw + 1, 0), V(d * 0.7, d * 0.55, d * 0.7), rock, M.Rock)
+			Kit.rock(field, p + V(0, d * 0.26, 0), V(d, d * 0.66, d * 0.85), rock, M.Rock, rng)
+			Kit.rock(field, p + V(d * 0.24, d * 0.16, d * 0.2), V(d * 0.62, d * 0.5, d * 0.62), rock, M.Rock, rng)
 			ell(field, CFrame.new(p + V(0, d * 0.55, 0)), V(d * 0.85, d * 0.3, d * 0.72), snow, M.Snow, { CastShadow = false })
 		end
 		-- frozen pond with cracks
@@ -308,23 +308,21 @@ return function(model, O, half)
 		local trunk = C(78, 58, 46)
 		-- flared root, then a slimmer trunk that runs right up through every tier to the crown
 		vcyl(nature, base + V(0, 1.6 * sc, 0), 3.2 * sc, 1.5 * sc, trunk, M.Wood)
-		vcyl(nature, base + V(0, 8.5 * sc, 0), 17 * sc, 0.9 * sc, trunk, M.Wood)
+		vcyl(nature, base + V(0, 6 * sc, 0), 12 * sc, 0.9 * sc, trunk, M.Wood) -- stops inside the crown
 		local green, deep = C(44, 82, 72), C(34, 64, 58)
-		local tiers = 5
+		-- stacked faceted cones, each tier turned 45 degrees from the last, snow on every tip
+		local yaw = rng:NextNumber(0, 1.6)
+		local tiers = 4
 		for t = 0, tiers - 1 do
 			local f = t / (tiers - 1)
-			local y = (3.2 + t * 2.6) * sc
-			local w = (9.5 - f * 6.2) * sc
-			-- a drooping skirt of boughs around the trunk
-			for k = 1, 5 do
-				local a = k / 5 * math.pi * 2 + t * 0.5
-				local reach = w * 0.34
-				ell(nature, CFrame.new(base + V(math.cos(a) * reach, y - 0.45 * sc, math.sin(a) * reach)) * CFrame.Angles(0, -a, math.rad(-14)), V(w * 0.62, 0.9 * sc, w * 0.34), (k % 2 == 0) and green or deep, M.Grass, { CastShadow = false })
-			end
-			ell(nature, CFrame.new(base + V(0, y, 0)), V(w * 0.7, 1.5 * sc, w * 0.7), green, M.Grass)
-			ell(nature, CFrame.new(base + V(0, y + 0.45 * sc, 0)), V(w * 0.62, 0.55 * sc, w * 0.62), snow, M.Snow, { CastShadow = false })
+			local y = (2.8 + t * 3.0) * sc
+			local w = (9.5 - f * 5.2) * sc
+			local h = (5.6 - f * 1.2) * sc
+			local cf = CFrame.new(base + V(0, y, 0)) * CFrame.Angles(0, yaw + t * math.rad(45), 0)
+			Kit.pyramid(nature, cf, w, h, (t % 2 == 0) and green or deep, M.Grass, { CastShadow = t == 0 })
+			local s = 0.45
+			Kit.pyramid(nature, cf * CFrame.new(0, h * (1 - s) + 0.06 * sc, 0), w * s * 1.04, h * s * 1.04, snow, M.Snow, { CastShadow = false })
 		end
-		ell(nature, CFrame.new(base + V(0, (3.2 + tiers * 2.6) * sc, 0)), V(1.4 * sc, 3 * sc, 1.4 * sc), green, M.Grass)
 	end
 
 	safe("pines", function()
@@ -362,6 +360,135 @@ return function(model, O, half)
 			for j = 1, rng:NextInteger(3, 5) do
 				local w, h, d = rng:NextNumber(14, 34), rng:NextNumber(14, 40), rng:NextNumber(10, 22)
 				block(nature, CFrame.new(p + V(rng:NextNumber(-12, 12), h / 2 - 4, rng:NextNumber(-8, 8))) * CFrame.Angles(rng:NextNumber(-0.12, 0.12), rng:NextNumber(0, 3), rng:NextNumber(-0.12, 0.12)), V(w, h, d), C(150 + rng:NextInteger(0, 30), 204 + rng:NextInteger(0, 20), 238), M.Ice, { Transparency = 0.18, CastShadow = false })
+			end
+		end
+	end)
+
+	------------------------------------------------------------------------------------
+	-- atmosphere: falling snow, ice sparkles, frost mist, ambient glow
+	------------------------------------------------------------------------------------
+	safe("atmosphere", function()
+		local atmo = Kit.model(model, "Atmosphere")
+		-- ambient falling snow across the whole arena
+		local snowAnchor = Kit.anchor(atmo, O + V(0, 50, -40), V(220, 80, 220))
+		Kit.emitter(snowAnchor, {
+			Texture = Kit.TEX_SOFT, Rate = 40, Lifetime = NumberRange.new(10, 16), Speed = NumberRange.new(0.5, 2), SpreadAngle = Vector2.new(50, 50),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0.6) }),
+			Color = ColorSequence.new(C(245, 250, 255), C(220, 230, 245)), LightInfluence = 0.8,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(0.8, 0.3), NumberSequenceKeypoint.new(1, 0.9) }),
+			Acceleration = Vector3.new(2, -1.2, 1), EmissionDirection = Enum.NormalId.Bottom, Rotation = NumberRange.new(0, 360),
+			RotSpeed = NumberRange.new(-30, 30),
+		})
+		-- second snow layer with larger, slower flakes
+		local snowAnchor2 = Kit.anchor(atmo, O + V(0, 30, -30), V(180, 50, 180))
+		Kit.emitter(snowAnchor2, {
+			Texture = Kit.TEX_SOFT, Rate = 15, Lifetime = NumberRange.new(8, 12), Speed = NumberRange.new(0.3, 1), SpreadAngle = Vector2.new(35, 35),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 1.4) }),
+			Color = ColorSequence.new(C(250, 252, 255), C(235, 242, 252)), LightInfluence = 0.9,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(0.8, 0.2), NumberSequenceKeypoint.new(1, 0.9) }),
+			Acceleration = Vector3.new(1.5, -0.8, 0.8), EmissionDirection = Enum.NormalId.Bottom, Rotation = NumberRange.new(0, 360),
+			RotSpeed = NumberRange.new(-15, 15),
+		})
+		-- frost mist near the temple doorway
+		local mistAnchor = Kit.anchor(atmo, V(O.X, plaza + 2, O.Z - 90), V(30, 3, 10))
+		Kit.emitter(mistAnchor, {
+			Texture = Kit.TEX_SOFT, Rate = 8, Lifetime = NumberRange.new(4, 7), Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(20, 5),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 8) }),
+			Color = ColorSequence.new(C(200, 220, 245), C(180, 200, 235)), LightInfluence = 0.7,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(0.4, 0.5), NumberSequenceKeypoint.new(1, 1) }),
+			Acceleration = Vector3.new(0.5, 0.3, 0.2), EmissionDirection = Enum.NormalId.Top, Rotation = NumberRange.new(0, 360),
+		})
+		-- ice sparkle emitters on crystal formations
+		for i = 1, 6 do
+			local a = rng:NextNumber(-math.pi * 0.8, math.pi * 0.8)
+			local r = rng:NextNumber(40, 70)
+			local p = Kit.backdrop(O, a, r, plaza - O.Y)
+			local sparkleAnchor = Kit.anchor(atmo, V(p.X, plaza + 3, p.Z), V(6, 4, 6))
+			Kit.emitter(sparkleAnchor, {
+				Texture = Kit.TEX_SPARK, Rate = 5, Lifetime = NumberRange.new(1.5, 3), Speed = NumberRange.new(0.2, 0.8), SpreadAngle = Vector2.new(30, 30),
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 0) }),
+				Color = ColorSequence.new(C(180, 230, 255), C(120, 190, 255)), LightEmission = 1, LightInfluence = 0.3,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.7, 0.4), NumberSequenceKeypoint.new(1, 1) }),
+				Acceleration = Vector3.new(0, 0.3, 0), EmissionDirection = Enum.NormalId.Top,
+			})
+		end
+		-- cool ambient blue glow lights
+		for i = 1, 6 do
+			local a = i / 6 * math.pi * 2 + 0.5
+			local p = Kit.anchor(atmo, O + V(math.cos(a) * 45, 5, math.sin(a) * 45))
+			Kit.light(p, C(100, 180, 255), 24, 0.6)
+		end
+		-- wind-blown snow dust near ground level
+		for i = 1, 4 do
+			local a = i / 4 * math.pi * 2
+			local windAnchor = Kit.anchor(atmo, O + V(math.cos(a) * 50, plaza + 0.5, math.sin(a) * 50), V(20, 1, 20))
+			Kit.emitter(windAnchor, {
+				Texture = Kit.TEX_SOFT, Rate = 10, Lifetime = NumberRange.new(2, 4), Speed = NumberRange.new(3, 6), SpreadAngle = Vector2.new(5, 15),
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 2) }),
+				Color = ColorSequence.new(C(230, 238, 250), C(200, 215, 240)), LightInfluence = 0.8,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.7, 0.4), NumberSequenceKeypoint.new(1, 1) }),
+				Acceleration = Vector3.new(math.cos(a) * 2, 0, math.sin(a) * 2), EmissionDirection = Enum.NormalId.Top,
+			})
+		end
+	end)
+
+	safe("frozenprops", function()
+		local props = Kit.model(model, "FrozenProps")
+		-- frozen weapon sculptures (swords embedded in ice)
+		for _, pos in ipairs({
+			{ O.X - 32, O.Z - 50 }, { O.X + 28, O.Z - 48 }, { O.X - 18, O.Z - 70 }, { O.X + 20, O.Z - 68 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			-- ice block
+			ell(props, CFrame.new(p + V(0, 0.3, 0)), V(2.0, 0.6, 2.0), C(170, 210, 245), M.Ice, { Transparency = 0.25, Reflectance = 0.15, CastShadow = false })
+			-- sword blade sticking up
+			local blade = block(props, CFrame.new(p + V(0, 2.5, 0)) * CFrame.Angles(math.rad(8), 0, 0), V(0.3, 4.5, 0.8), C(180, 195, 215), M.Metal, { Reflectance = 0.3, CastShadow = false })
+			-- crossguard
+			block(props, CFrame.new(p + V(0, 0.8, 0)), V(1.8, 0.3, 0.5), C(140, 148, 168), M.Metal, { CastShadow = false })
+			-- frost glow
+			Kit.light(blade, C(130, 200, 255), 8, 0.5)
+		end
+		-- ice sculptures (stylized figures)
+		for _, pos in ipairs({
+			{ O.X - 45, O.Z - 30 }, { O.X + 42, O.Z - 35 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			ell(props, CFrame.new(p + V(0, 1.5, 0)), V(1.6, 3, 1.6), C(180, 220, 250), M.Ice, { Transparency = 0.2, Reflectance = 0.2 })
+			ell(props, CFrame.new(p + V(0, 3.5, 0)), V(1.8, 0.8, 1.8), C(190, 225, 255), M.Ice, { Transparency = 0.15, CastShadow = false })
+			-- glowing core
+			local core = ball(props, p + V(0, 1.5, 0), 0.5, glowBlue, M.Neon, { CastShadow = false })
+			Kit.light(core, C(130, 200, 255), 10, 0.7)
+		end
+		-- frozen barrels and crates
+		for _, pos in ipairs({
+			{ O.X - 38, O.Z - 25 }, { O.X + 36, O.Z - 28 }, { O.X - 50, O.Z - 15 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			vcyl(props, p + V(0, 0.9, 0), 1.8, 1.4, C(90, 80, 70), M.Wood)
+			ell(props, CFrame.new(p + V(0, 1.9, 0)), V(1.5, 0.5, 1.5), snow, M.Snow, { CastShadow = false })
+			for _, y in ipairs({ 0.3, 0.9, 1.5 }) do
+				vcyl(props, p + V(0, y, 0), 0.1, 1.5, C(50, 42, 34), M.Wood, { CastShadow = false })
+			end
+		end
+		-- snow-covered supply crates
+		for _, pos in ipairs({
+			{ O.X + 48, O.Z - 20 }, { O.X - 55, O.Z - 22 }, { O.X + 30, O.Z - 55 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			local s = rng:NextNumber(1.2, 1.8)
+			block(props, CFrame.new(p + V(0, s / 2, 0)) * CFrame.Angles(0, rng:NextNumber(0, 0.3), 0), V(s, s, s), C(72, 62, 52), M.Wood)
+			ell(props, CFrame.new(p + V(0, s + 0.1, 0)), V(s + 0.2, 0.3, s + 0.2), snow, M.Snow, { CastShadow = false })
+		end
+		-- frozen lanterns along the path to the temple
+		for i = 0, 3 do
+			for _, sx in ipairs({ -1, 1 }) do
+				local p = V(O.X + sx * 8, plaza, O.Z - 40 - i * 14)
+				-- stone post
+				block(props, CFrame.new(p + V(0, 0.6, 0)), V(0.8, 1.2, 0.8), C(150, 156, 168), M.Slate)
+				-- ice block lantern
+				ell(props, CFrame.new(p + V(0, 2.0, 0)), V(1.2, 1.2, 1.2), C(160, 220, 255), M.Ice, { Transparency = 0.15, CastShadow = false })
+				local lamp = ball(props, p + V(0, 2.0, 0), 0.5, glowBlue, M.Neon, { CastShadow = false })
+				Kit.light(lamp, C(130, 200, 255), 12, 0.8)
 			end
 		end
 	end)

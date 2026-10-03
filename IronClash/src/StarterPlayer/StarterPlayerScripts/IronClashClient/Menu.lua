@@ -1,4 +1,5 @@
--- IRON CLASH :: title menu, matchmaking status and post-match results
+-- IRON CLASH :: fighter select (opened from the hub), loading cover and post-match results
+-- (the old title menu is still built but no longer shown: the hub replaced it)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -150,6 +151,12 @@ function Menu.new()
 			self.onSelect(self.selected, nextPal)
 		end
 	end)
+	-- close button (the panel opens on its own over the hub)
+	local closeBtn = UI.button({ Text = "DONE", Size = UDim2.new(0, 110, 0, 36), Position = UDim2.new(1, 0, 1, 10), AnchorPoint = Vector2.new(1, 0), Parent = sel, color = Color3.fromRGB(170, 110, 20), strokeColor = COL.gold, radius = 8 })
+	closeBtn.MouseButton1Click:Connect(function()
+		self:closeSelect()
+	end)
+	self.closeBtn = closeBtn
 	local head = UI.label({ Text = "SELECT FIGHTER", Size = UDim2.new(1, -24, 0.05, 0), Position = UDim2.new(0, 12, 0.63, 0), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COL.gold, Parent = sel })
 	UI.textStroke(COL.ink, 2).Parent = head
 	local grid = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -24, 0.3, 0), Position = UDim2.new(0, 12, 0.69, 0), Parent = sel }, {
@@ -203,7 +210,7 @@ function Menu.new()
 	UI.textStroke(COL.ink, 2).Parent = self.resScore
 	self.resInfo = UI.label({ Text = "", Size = UDim2.new(1, -40, 0.08, 0), Position = UDim2.new(0.5, 0, 0.52, 0), AnchorPoint = Vector2.new(0.5, 0), TextColor3 = COL.steel, Parent = res })
 	local again, againLabel = UI.button({ Text = "REMATCH", Size = UDim2.new(0.42, 0, 0.17, 0), Position = UDim2.new(0.27, 0, 0.8, 0), AnchorPoint = Vector2.new(0.5, 0.5), Parent = res, color = Color3.fromRGB(200, 60, 30), strokeColor = COL.gold })
-	local back = UI.button({ Text = "MENU", Size = UDim2.new(0.42, 0, 0.17, 0), Position = UDim2.new(0.73, 0, 0.8, 0), AnchorPoint = Vector2.new(0.5, 0.5), Parent = res, color = Color3.fromRGB(50, 50, 70) })
+	local back = UI.button({ Text = "HUB", Size = UDim2.new(0.42, 0, 0.17, 0), Position = UDim2.new(0.73, 0, 0.8, 0), AnchorPoint = Vector2.new(0.5, 0.5), Parent = res, color = Color3.fromRGB(50, 50, 70) })
 	self.againLabel = againLabel
 	self.againButton = again
 	again.MouseButton1Click:Connect(function()
@@ -234,7 +241,7 @@ function Menu.new()
 		end
 		if self.resDeadline then
 			local left = math.max(0, math.ceil(self.resDeadline - os.clock()))
-			self.resCountdown.Text = "RETURNING TO MENU IN " .. left
+			self.resCountdown.Text = "RETURNING TO THE HUB IN " .. left
 		end
 	end)
 	return self
@@ -307,6 +314,31 @@ function Menu:hide()
 	self.searching = nil
 end
 
+-- fighter select on its own, over the hub
+function Menu:openSelect()
+	self.gui.Enabled = true
+	self.main.Visible = false
+	self.shade.Visible = false
+	self.card.Visible = false
+	self.results.Visible = false
+	self.select.Visible = true
+	self.closeBtn.Visible = true
+	if UserInputService.GamepadEnabled then
+		pcall(function()
+			GuiService.SelectedObject = self.closeBtn
+		end)
+	end
+end
+
+function Menu:closeSelect()
+	self.select.Visible = false
+	if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(self.gui) then
+		pcall(function()
+			GuiService.SelectedObject = nil
+		end)
+	end
+end
+
 function Menu:setStatus(text, searching)
 	self.status.TextColor3 = COL.cyan
 	if searching then
@@ -337,8 +369,19 @@ function Menu:showResults(d)
 	if d.mode == "cpu" then
 		self.againLabel.Text = d.won and "NEXT FIGHT" or "RETRY"
 		self:setLevel(d.cpuLevel)
+	elseif d.mode == "tower" then
+		local floor = tonumber(d.floor) or 1
+		local best = tonumber(d.best) or 0
+		self.resTitle.Text = d.won and ("FLOOR " .. floor .. " CLEARED") or "TOWER RUN OVER"
+		self.resScore.Text = d.won and ("NEXT: FLOOR " .. (floor + 1)) or ("YOU FELL ON FLOOR " .. floor)
+		self.resInfo.Text = (best > 0 and ("BEST: FLOOR " .. best) or "BEST: -") .. (d.newBest and "   -   NEW RECORD!" or "")
+		self.resInfo.TextColor3 = d.newBest and COL.gold or COL.steel
+		self.againLabel.Text = d.won and "NEXT FLOOR" or "TRY AGAIN"
 	else
 		self.againLabel.Text = "REMATCH"
+	end
+	if d.mode ~= "tower" then
+		self.resInfo.TextColor3 = COL.steel
 	end
 	self.resDeadline = os.clock() + Config.ResultsTime
 	if UserInputService.GamepadEnabled then

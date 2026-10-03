@@ -854,6 +854,174 @@ local function walkFeet(p, phase, amt)
 	p.rsx = p.rsx - s2 * 4 * amt
 end
 
+-- Free walking / running in the hub (an upright gait, not the fighting stance), built from how people
+-- actually move. `cycle` (0..1) is the stride phase (left foot touches down at 0), `k` (0..1) blends a
+-- walk (0) into a run (1).
+--  * Each foot is planted for a share of the stride (the duty factor: ~60% walking, ~22% running, which
+--    leaves a flight phase with both feet in the air). A planted foot slides back under the body at
+--    exactly ground speed (the caller advances `cycle` from Poses.hubGait), so it never skates.
+--  * Planted: heel strike -> flat foot -> heel rise -> push off the ball of the foot.
+--  * Swinging: walking keeps the foot low and close; running kicks the heel up behind, drives the knee
+--    through, reaches forward and claws back down. The path is a smooth spline that leaves and meets
+--    the ground at ground speed, so there is no jolt at lift-off or touch-down.
+--  * The body is highest over the planted foot when walking and dips there when running (the leg
+--    compresses), sways over the planted foot, the pelvis turns with the legs while the shoulders
+--    counter-turn, and the arms swing against the legs (loose when walking, bent ~90 degrees running).
+-- Foot z values are in rig units; `zmul` undoes the rig's stride shortening for imported bodies.
+local GAIT_W = {
+	duty = 0.6, front = -0.5, back = 0.85, toeOff = -30, strike = 14, rise = 0.55,
+	py = -0.04, bob = 0.035, sway = 0.05, roll = 3, width = 0.3,
+	swingZ = { nil, 0.55, 0.08, 0.78, nil }, swingY = { nil, 0.3, 0.2, 0.09, 0 },
+	pitch = 0, lean = -1, spine = -1, yaw = 5, counter = 8,
+	arm = 16, armOff = 0, elbow = 14, elbowFwd = 12, armOut = 7,
+}
+local GAIT_R = {
+	duty = 0.22, front = -0.5, back = 1.3, toeOff = -45, strike = 5, rise = 0.3,
+	py = -0.1, bob = -0.05, sway = 0.015, roll = 1.5, width = 0.22,
+	swingZ = { nil, 0.8, -0.04, 1.3, nil }, swingY = { nil, 1.0, 0.82, 0.42, 0 },
+	pitch = 0, lean = -10, spine = -4, yaw = 7, counter = 12,
+	arm = 38, armOff = -2, elbow = 75, elbowFwd = 20, armOut = 12,
+}
+local BALL = 0.5 -- ankle to ball of the foot (the push-off pivot)
+
+local function mix(key, k)
+	return GAIT_W[key] + (GAIT_R[key] - GAIT_W[key]) * k
+end
+
+-- duty factor and planted-foot sweep (front to back, rig units) for a walk/run blend `k`
+function Poses.hubGait(k)
+	return mix("duty", k), mix("back", k) - mix("front", k)
+end
+
+-- cubic Hermite through 5 evenly spaced keys; m0 / m4 = end slopes (per key spacing)
+local function spline5(keys, s, m0, m4)
+	local x = math.clamp(s, 0, 1) * 4
+	local i = math.min(math.floor(x), 3) -- segment 0..3 from keys[i+1] to keys[i+2]
+	local u = x - i
+	local function slope(j) -- j = 1..5
+		if j == 1 then
+			return m0
+		elseif j == 5 then
+			return m4
+		end
+		return (keys[j + 1] - keys[j - 1]) * 0.5
+	end
+	local a, b = keys[i + 1], keys[i + 2]
+	local ma, mb = slope(i + 1), slope(i + 2)
+	local u2, u3 = u * u, u * u * u
+	return (2 * u3 - 3 * u2 + 1) * a + (u3 - 2 * u2 + u) * ma + (-2 * u3 + 3 * u2) * b + (u3 - u2) * mb
+end
+
+local function smooth01(x)
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+
+-- one foot at phase q (0 = touch-down): z (forward -), lift y, pitch (toes up +)
+local function gaitFoot(q, k)
+	local duty = mix("duty", k)
+	local front, back = mix("front", k), mix("back", k)
+	local toeOff, strike, rise = mix("toeOff", k), mix("strike", k), mix("rise", k)
+	local function planted(t)
+		local z = front + (back - front) * t -- the ball of the foot stays put on the ground
+		local pitch
+		if t < 0.15 then
+			pitch = strike * (1 - smooth01(t / 0.15)) -- heel strike rolls down to a flat foot
+		elseif t > rise then
+			pitch = toeOff * smooth01((t - rise) / (1 - rise)) -- heel rises, push off the toes
+		else
+			pitch = 0
+		end
+		local y = 0
+		if pitch < 0 then
+			local a = math.rad(-pitch)
+			y = BALL * math.sin(a)
+			z = z - BALL * (1 - math.cos(a)) -- the ankle swings up and over the ball
+		end
+		return z, y, pitch
+	end
+	if q < duty then
+		return planted(q / duty)
+	end
+	local s = (q - duty) / (1 - duty)
+	local z0, y0, p0 = planted(1)
+	-- swing path keys (walk and run shapes blended), leaving and landing at ground speed
+	local zk, yk = {}, {}
+	for i = 1, 5 do
+		local wz, rz = GAIT_W.swingZ[i], GAIT_R.swingZ[i]
+		if i == 1 then
+			zk[i] = z0
+		elseif i == 5 then
+			zk[i] = front
+		elseif i == 3 then
+			zk[i] = wz + (rz - wz) * k
+		elseif i == 2 then
+			zk[i] = back * (wz + (rz - wz) * k)
+		else
+			zk[i] = front * (wz + (rz - wz) * k)
+		end
+		local wy, ry = GAIT_W.swingY[i], GAIT_R.swingY[i]
+		yk[i] = (i == 1) and y0 or (wy + (ry - wy) * k)
+	end
+	local ground = (back - front) / duty * (1 - duty) / 4 -- planted-foot speed in key spacing units
+	local z = spline5(zk, s, ground * 0.6, ground * 0.35)
+	local y = math.max(0, spline5(yk, s, 0.6, -0.12))
+	-- toes point down off the ground, level out, then lift for the next heel strike
+	local pitch
+	if s < 0.5 then
+		pitch = p0 + (-6 * k - p0) * smooth01(s / 0.5)
+	else
+		pitch = -6 * k + (strike + 6 * k) * smooth01((s - 0.5) / 0.5)
+	end
+	return z, y, pitch
+end
+
+local function hubMove(p, cycle, k, zmul, lean)
+	copyInto(p, RELAX)
+	zmul = zmul or 1
+	lean = lean or 0
+	local duty = mix("duty", k)
+	local lz, ly, lp = gaitFoot(cycle % 1, k)
+	local rz, ry, rp = gaitFoot((cycle + 0.5) % 1, k)
+	local width = mix("width", k)
+	p.lfx, p.rfx = -width, width
+	p.lfz, p.rfz = lz * zmul, rz * zmul
+	p.lfy, p.rfy = ly, ry
+	p.lfp, p.rfp = lp, rp
+	p.lfr, p.rfr = -5, 5 -- toes turn out a little
+	p.lik, p.rik = 1, 1
+	-- body over the feet: two bobs per stride, peaking (walk) or dipping (run) at mid-stance
+	local mid = cycle - duty * 0.5 -- 0 = left foot at mid-stance
+	local twice = math.cos(mid * math.pi * 4)
+	local once = math.cos(mid * math.pi * 2) -- +1 = weight over the left foot
+	p.py = mix("py", k) + mix("bob", k) * twice
+	p.px = -mix("sway", k) * once
+	p.pz = 0
+	-- the pelvis drops on the side of the swinging leg; the whole body banks into turns
+	p.rz = -mix("roll", k) * once + lean
+	p.rx = mix("lean", k)
+	local f = math.cos(cycle * math.pi * 2) -- +1 when the left leg is forward
+	p.ry = -mix("yaw", k) * f -- the pelvis turns with the forward leg
+	p.wx = mix("spine", k)
+	p.wy = mix("counter", k) * f -- the shoulders turn the other way
+	p.wz = 0
+	p.nx = -(p.rx + p.wx) * 0.75 + 1 -- eyes level, looking ahead
+	p.ny = -(p.ry + p.wy)
+	p.nz = -lean * 0.4
+	-- arms swing against the legs, slightly behind them in time
+	local fa = math.cos((cycle - 0.03) * math.pi * 2)
+	local amp, off = mix("arm", k), mix("armOff", k)
+	local elbow, elbowFwd = mix("elbow", k), mix("elbowFwd", k)
+	local out = mix("armOut", k)
+	p.rsx = off + amp * fa -- right arm forward with the left leg
+	p.lsx = off - amp * fa
+	p.rex = elbow + elbowFwd * math.max(0, fa)
+	p.lex = elbow + elbowFwd * math.max(0, -fa)
+	p.lsy, p.rsy = -6 * k * math.max(0, -fa), 6 * k * math.max(0, fa) -- hands come in toward the chest going forward
+	p.lsz, p.rsz = -out, out
+	p.lwx, p.rwx = 0, 0
+end
+
 local function pick(list, variant)
 	return list[((variant or 0) % #list) + 1]
 end
@@ -1053,6 +1221,22 @@ function Poses.evaluate(st, clock)
 	elseif s == "Relax" then
 		copyInto(p, RELAX)
 		breathe(p, clock, 1)
+	elseif s == "HubMove" then
+		hubMove(p, st.cycle or 0, st.k or 0, st.zmul, st.lean)
+	elseif s == "HubAir" then
+		-- jumping / falling around the hub: knees tuck on the way up, legs reach for the ground coming down
+		copyInto(p, JUMP)
+		local k = math.clamp(((st.vy or 0) + 20) / 60, 0, 1)
+		p.rx, p.ry, p.rz = -4, 0, 0
+		p.wx, p.wy = -4, 0
+		p.nx, p.ny = 4, 0
+		p.lsx, p.rsx = 30 + 70 * k, 20 + 70 * k
+		p.lsy, p.rsy = 0, 0
+		p.lsz, p.rsz = -30, 30
+		p.lex, p.rex = 40, 45
+		p.lhx, p.rhx = 20 + 50 * k, 8 + 30 * k
+		p.lkx, p.rkx = 30 + 70 * k, 20 + 50 * k
+		p.lax, p.rax = -10, -10
 	else
 		copyInto(p, STANCE)
 		bounce(p, clock, 1)

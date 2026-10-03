@@ -219,6 +219,50 @@ local function remoteState(tr, now)
 	return st
 end
 
+-- Hub characters are ordinary walking Humanoids: pose them from how they actually move
+-- (idle / walk-to-run / airborne) instead of from fight states.
+local function smooth01(x)
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+
+local function hubState(tr, dt)
+	local root = tr.info.root
+	local v = root.AssemblyLinearVelocity
+	local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+	-- how fast the body is turning (to bank into turns like a runner does)
+	local look = root.CFrame.LookVector
+	local yaw = math.atan2(-look.X, -look.Z)
+	local turn = 0
+	if tr.hubYaw and dt > 0 then
+		turn = ((yaw - tr.hubYaw + math.pi) % (2 * math.pi) - math.pi) / dt
+	end
+	tr.hubYaw = yaw
+	tr.hubTurn = (tr.hubTurn or 0) + (turn - (tr.hubTurn or 0)) * math.min(1, dt * 10)
+	if math.abs(v.Y) > 6 then
+		return { state = "HubAir", vy = v.Y, t = 0 }
+	end
+	if speed < 1 then
+		return { state = "Relax", t = 0 }
+	end
+	local k = smooth01((speed - 4) / 9) -- walk below ~4 studs/s, full run from ~13
+	local duty, sweep = Poses.hubGait(k)
+	local scale = math.max(tr.info.scale or 1, 0.3)
+	-- a planted foot covers `sweep` while the body moves `speed * duty` of a stride: advance the stride so
+	-- the two match and the feet never skate
+	tr.hubCycle = ((tr.hubCycle or 0) + speed * duty / (sweep * scale) * dt) % 1
+	-- Rig.apply shortens the stride of non-native bodies; undo that so the planted foot keeps pace
+	local strideMul = (tr.info.j.chest and not tr.char:GetAttribute("Imported")) and 1 or 0.8
+	local lean = math.deg(math.atan(speed * tr.hubTurn / 196.2)) * smooth01((speed - 5) / 8)
+	return {
+		state = "HubMove", cycle = tr.hubCycle, k = k, t = 0,
+		zmul = 1 / strideMul, lean = math.clamp(lean, -14, 14),
+	}
+end
+
+-- while walking / running these follow the gait exactly (a spring would lag them and the feet would skate)
+local GAIT_PIN = { "lfx", "lfz", "lfy", "lfp", "lfr", "rfx", "rfz", "rfy", "rfp", "rfr", "lik", "rik", "py", "px" }
+
 local EVENT_STATES = { Knockdown = "down", Down = "down", Landing = "land", Splat = "splat", GetUp = "getup" }
 
 function Animator:stepTrack(tr, dt, now)
@@ -234,6 +278,8 @@ function Animator:stepTrack(tr, dt, now)
 	local st
 	if tr.motor then
 		st = tr.motor:getAnim()
+	elseif tr.char:GetAttribute("Hub") == true then
+		st = hubState(tr, dt)
 	else
 		-- integrate walk phase from replicated velocity
 		local root = tr.info.root
@@ -341,6 +387,21 @@ function Animator:stepTrack(tr, dt, now)
 	st.poseVar = tr.char:GetAttribute("PoseVar")
 	local target = Poses.evaluate(st, self.clock + tr.phase)
 	Poses.springStep(tr.spring, target, dt, Poses.boostFor(st.state), tr.pose)
+	if st.state == "HubMove" then
+		tr.gaitPin = math.min(1, (tr.gaitPin or 0) + dt / 0.18) -- ease in from standing
+	else
+		tr.gaitPin = 0
+	end
+	if tr.gaitPin > 0 then
+		local w = tr.gaitPin
+		local sx, sv = tr.spring.x, tr.spring.v
+		for _, key in ipairs(GAIT_PIN) do
+			local val = tr.pose[key] + (target[key] - tr.pose[key]) * w
+			tr.pose[key] = val
+			sx[key] = val
+			sv[key] = 0
+		end
+	end
 	Rig.apply(tr.info, tr.pose)
 	if #tr.sec.chains == 0 and self.clock > (tr.secCheck or 0) then
 		-- joints can replicate a moment after the model: look again for secondary-motion chains

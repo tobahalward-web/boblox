@@ -72,6 +72,24 @@ Config.Arenas = {
 Config.ParkPosition = Vector3.new(-3000, 900, -3000) -- where idle characters wait
 Config.MenuArena = 1
 
+-- hub ------------------------------------------------------------------
+-- The plaza players walk around between fights (built at runtime by Modules/Hub). It sits far from
+-- the arenas so their lighting and scenery never overlap.
+Config.Hub = {
+	origin = Vector3.new(-2000, 100, 0), -- centre of the plaza floor (top surface)
+	walkSpeed = 16,
+	jumpPower = 46,
+	challengeTime = 15, -- seconds a hub challenge waits for an answer
+}
+
+-- battle tower ---------------------------------------------------------
+-- Endless CPU floors. The CPU gets one difficulty level tougher every `floorsPerLevel` floors until it
+-- reaches the top of Config.CPU, then stays there. A loss ends the run; the best floor cleared is saved.
+Config.Tower = {
+	roundsToWin = 1, -- one round per floor keeps the climb moving (2 = best of 3)
+	floorsPerLevel = 2,
+}
+
 -- CPU difficulty ladder (level = index) -----------------------------------
 Config.CPU = {
 	{ name = "ROOKIE", react = 0.42, block = 0.25, lowBlock = 0.1, punish = 0.15, aggression = 0.35, breakThrow = 0.1, combo = 0.3, sidestep = 0.05 },

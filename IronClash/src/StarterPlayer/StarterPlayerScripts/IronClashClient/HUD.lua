@@ -272,7 +272,7 @@ function HUD.new()
 
 	-- practice panel
 	self.practice = UI.new("Frame", {
-		BackgroundColor3 = COL.ink, BackgroundTransparency = 0.25, Size = UDim2.new(0, 210, 0, 188),
+		BackgroundColor3 = COL.ink, BackgroundTransparency = 0.25, Size = UDim2.new(0, 210, 0, 226),
 		Position = UserInputService.TouchEnabled and UDim2.new(0, 16, 0, inset + 112) or UDim2.new(0, 16, 1, -40),
 		AnchorPoint = UserInputService.TouchEnabled and Vector2.new(0, 0) or Vector2.new(0, 1), Visible = false, Parent = gui,
 	}, { UI.corner(10), UI.stroke(COL.cyan, 2, 0.4) })
@@ -281,7 +281,13 @@ function HUD.new()
 	local dummyBtn, dummyLabel = UI.button({ Text = "DUMMY: STAND", Size = UDim2.new(1, -20, 0, 32), Position = UDim2.new(0, 10, 0, 38), Parent = self.practice, color = Color3.fromRGB(30, 60, 90) })
 	local movesBtn = UI.button({ Text = "MOVE LIST", Size = UDim2.new(1, -20, 0, 32), Position = UDim2.new(0, 10, 0, 76), Parent = self.practice, color = Color3.fromRGB(50, 50, 70) })
 	local ctlBtn = UI.button({ Text = "CONTROLS", Size = UDim2.new(1, -20, 0, 32), Position = UDim2.new(0, 10, 0, 114), Parent = self.practice, color = Color3.fromRGB(50, 50, 70) })
-	local exitBtn = UI.button({ Text = "EXIT", Size = UDim2.new(1, -20, 0, 28), Position = UDim2.new(0, 10, 0, 152), Parent = self.practice, color = Color3.fromRGB(110, 30, 34) })
+	local trialsBtn = UI.button({ Text = "COMBO TRIALS", Size = UDim2.new(1, -20, 0, 32), Position = UDim2.new(0, 10, 0, 152), Parent = self.practice, color = Color3.fromRGB(150, 100, 20), strokeColor = COL.gold })
+	trialsBtn.MouseButton1Click:Connect(function()
+		if self.onTrial then
+			self.onTrial(self.lastTrialIndex or 1)
+		end
+	end)
+	local exitBtn = UI.button({ Text = "EXIT", Size = UDim2.new(1, -20, 0, 28), Position = UDim2.new(0, 10, 0, 190), Parent = self.practice, color = Color3.fromRGB(110, 30, 34) })
 	self.dummyLabel = dummyLabel
 	local modes = { "Stand", "Guard", "Crouch", "CPU" }
 	self.dummyIndex = 1
@@ -304,6 +310,46 @@ function HUD.new()
 	exitBtn.MouseButton1Click:Connect(function()
 		if self.onExit then
 			self.onExit()
+		end
+	end)
+
+	-- combo trial panel (practice): the combo to land, one box per hit, each lit as it connects.
+	-- Top-right, clear of your own combo counter on the left (the dummy never attacks in a trial).
+	local tp = UI.new("Frame", {
+		BackgroundColor3 = COL.ink, BackgroundTransparency = 0.2, Size = UDim2.new(0, 372, 0, 220),
+		Position = UDim2.new(1, -16, 0, inset + 112), AnchorPoint = Vector2.new(1, 0), Visible = false, Parent = gui,
+	}, { UI.corner(12), UI.stroke(COL.gold, 2, 0.35) })
+	self.trialPanel = tp
+	self.trialHead = UI.label({ Text = "COMBO TRIAL", Size = UDim2.new(1, -24, 0, 18), Position = UDim2.new(0, 12, 0, 10), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COL.cyan, Parent = tp })
+	UI.textStroke(COL.ink, 2).Parent = self.trialHead
+	self.trialName = UI.label({ Text = "", Size = UDim2.new(1, -24, 0, 30), Position = UDim2.new(0, 12, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, Parent = tp })
+	UI.textStroke(COL.ink, 3).Parent = self.trialName
+	UI.new("UIGradient", { Color = ColorSequence.new(Color3.new(1, 1, 1), COL.gold), Rotation = 90, Parent = self.trialName })
+	self.trialDesc = UI.label({ Text = "", Size = UDim2.new(1, -24, 0, 15), Position = UDim2.new(0, 12, 0, 62), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225), Parent = tp })
+	UI.font(self.trialDesc, Enum.FontWeight.Medium, false)
+	self.trialSteps = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -24, 0, 54), Position = UDim2.new(0, 12, 0, 84), Parent = tp }, {
+		UI.new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }),
+	})
+	self.trialStatus = UI.label({ Text = "", Size = UDim2.new(1, -24, 0, 22), Position = UDim2.new(0, 12, 0, 144), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COL.steel, Parent = tp })
+	UI.textStroke(COL.ink, 2).Parent = self.trialStatus
+	local prevBtn = UI.button({ Text = "< PREV", Size = UDim2.new(0, 96, 0, 32), Position = UDim2.new(0, 12, 0, 176), Parent = tp, color = Color3.fromRGB(50, 50, 70), radius = 8 })
+	local nextBtn = UI.button({ Text = "NEXT >", Size = UDim2.new(0, 96, 0, 32), Position = UDim2.new(0, 114, 0, 176), Parent = tp, color = Color3.fromRGB(50, 50, 70), radius = 8 })
+	local freeBtn = UI.button({ Text = "FREE PRACTICE", Size = UDim2.new(0, 140, 0, 32), Position = UDim2.new(1, -12, 0, 176), AnchorPoint = Vector2.new(1, 0), Parent = tp, color = Color3.fromRGB(30, 60, 90), radius = 8 })
+	prevBtn.MouseButton1Click:Connect(function()
+		if self.trial and self.onTrial then
+			local total = self.trial.total or #Moves.Combos
+			self.onTrial((self.trial.index - 2) % total + 1)
+		end
+	end)
+	nextBtn.MouseButton1Click:Connect(function()
+		if self.trial and self.onTrial then
+			local total = self.trial.total or #Moves.Combos
+			self.onTrial(self.trial.index % total + 1)
+		end
+	end)
+	freeBtn.MouseButton1Click:Connect(function()
+		if self.onTrial then
+			self.onTrial(0)
 		end
 	end)
 
@@ -350,6 +396,104 @@ function HUD:setBinds(binds)
 	self.hint.Text = hint
 	self.breakPrompt.Text = string.format("BREAK THE THROW!  PRESS %s OR %s", k("b1", 1), k("b2", 1))
 	self:buildMoveList()
+	if self.trial then
+		self.trialBuilt = nil -- key names changed: redraw the trial boxes
+		self:setTrial(self.trial)
+	end
+end
+
+------------------------------------------------------------------------------------------
+-- combo trials
+------------------------------------------------------------------------------------------
+local DIRS = { df = "d/f", db = "d/b", uf = "u/f", ub = "u/b", ff = "f,f" }
+
+-- "df1" -> "d/f+1", "2" -> "2"
+local function pressLabel(press)
+	local dir, rest = string.match(press, "^(%a+)(.+)$")
+	if dir then
+		return (DIRS[dir] or dir) .. "+" .. rest
+	end
+	return press
+end
+
+function HUD:buildTrialSteps(combo)
+	for _, c in ipairs(self.trialSteps:GetChildren()) do
+		if c:IsA("GuiObject") then
+			c:Destroy()
+		end
+	end
+	self.trialBoxes = {}
+	local order = 0
+	for _, press in ipairs(combo.presses or {}) do
+		order = order + 1
+		if string.sub(press, 1, 1) == "@" then
+			local m = UI.label({ Text = "JUGGLE", Size = UDim2.new(0, 34, 0, 16), LayoutOrder = order, TextColor3 = COL.orange, Parent = self.trialSteps })
+			UI.textStroke(COL.ink, 1.5).Parent = m
+		else
+			local label = pressLabel(press)
+			local wide = #label > 2
+			local box = UI.new("Frame", {
+				BackgroundColor3 = Color3.fromRGB(34, 34, 50), Size = UDim2.new(0, wide and 58 or 42, 1, 0), LayoutOrder = order, Parent = self.trialSteps,
+			}, { UI.corner(8) })
+			local stroke = UI.stroke(COL.white, 2, 0.75)
+			stroke.Parent = box
+			local top = UI.label({ Text = label, Size = UDim2.new(1, -6, 0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), AnchorPoint = Vector2.new(0.5, 0), Parent = box })
+			UI.textStroke(COL.ink, 1.5).Parent = top
+			local keys = UI.label({ Text = Keybinds.notation(label, self.binds), Size = UDim2.new(1, -6, 0.34, 0), Position = UDim2.new(0.5, 0, 1, -4), AnchorPoint = Vector2.new(0.5, 1), TextColor3 = COL.cyan, Parent = box })
+			UI.textStroke(COL.ink, 1.5).Parent = keys
+			self.trialBoxes[#self.trialBoxes + 1] = { box = box, stroke = stroke }
+		end
+	end
+end
+
+-- d = { on, index, total, step (next hit to land, 1-based), cleared, justCleared, dropped }
+function HUD:setTrial(d)
+	if not d or not d.on then
+		self.trialPanel.Visible = false
+		self.trial = nil
+		return
+	end
+	local combo = Moves.Combos[d.index]
+	if not combo then
+		return
+	end
+	self.trialPanel.Visible = true
+	self.lastTrialIndex = d.index
+	if self.trialBuilt ~= d.index then
+		self:buildTrialSteps(combo)
+		self.trialBuilt = d.index
+	end
+	self.trial = d
+	self.trialHead.Text = string.format("COMBO TRIAL  %d / %d", d.index, d.total or #Moves.Combos)
+	self.trialName.Text = combo.name
+	self.trialDesc.Text = combo.desc or ""
+	local step = d.step or 1
+	for i, b in ipairs(self.trialBoxes or {}) do
+		if d.cleared or i < step then
+			b.box.BackgroundColor3 = Color3.fromRGB(40, 130, 60)
+			b.stroke.Color, b.stroke.Transparency, b.stroke.Thickness = COL.green, 0, 2
+		elseif i == step then
+			b.box.BackgroundColor3 = Color3.fromRGB(70, 56, 20)
+			b.stroke.Color, b.stroke.Transparency, b.stroke.Thickness = COL.gold, 0, 3
+		else
+			b.box.BackgroundColor3 = Color3.fromRGB(34, 34, 50)
+			b.stroke.Color, b.stroke.Transparency, b.stroke.Thickness = COL.white, 0.75, 2
+		end
+	end
+	if d.cleared then
+		local last = (d.index >= (d.total or #Moves.Combos))
+		self.trialStatus.Text = last and "CLEAR!  ALL TRIALS DONE - TRY ANY ONE AGAIN" or "CLEAR!  NEXT TRIAL COMING UP..."
+		self.trialStatus.TextColor3 = COL.green
+	elseif d.dropped then
+		self.trialStatus.Text = "DROPPED - START FROM THE FIRST HIT"
+		self.trialStatus.TextColor3 = Color3.fromRGB(255, 110, 100)
+	elseif step > 1 then
+		self.trialStatus.Text = "KEEP GOING!"
+		self.trialStatus.TextColor3 = COL.gold
+	else
+		self.trialStatus.Text = "LAND EVERY HIT IN ONE COMBO"
+		self.trialStatus.TextColor3 = COL.steel
+	end
 end
 
 function HUD:buildMoveList()
@@ -450,10 +594,13 @@ function HUD:bind(folder, leftIdx, opts)
 	self.rightIdx = 3 - self.leftIdx
 	self.gui.Enabled = true
 	self.practice.Visible = opts.mode == "practice"
-	self.quitBtn.Visible = opts.mode == "cpu"
+	self.trialPanel.Visible = false
+	self.trial = nil
+	local vsCpu = opts.mode == "cpu" or opts.mode == "tower"
+	self.quitBtn.Visible = vsCpu
 	-- "KEYS" sits beside QUIT in CPU matches, and takes QUIT's place in PvP (practice has its own panel)
 	self.keysBtn.Visible = opts.mode ~= "practice" and not opts.spectate
-	self.keysBtn.Position = (opts.mode == "cpu") and UDim2.new(1, -94, 0, self.inset + 112) or UDim2.new(1, -16, 0, self.inset + 112)
+	self.keysBtn.Position = vsCpu and UDim2.new(1, -94, 0, self.inset + 112) or UDim2.new(1, -16, 0, self.inset + 112)
 	self.spectateLabel.Visible = opts.spectate == true
 	self.dummyIndex = 1
 	self.dummyLabel.Text = "DUMMY: STAND"
@@ -594,6 +741,8 @@ function HUD:update(dt)
 	local round = f:GetAttribute("Round") or 1
 	if f:GetAttribute("Mode") == "practice" then
 		self.roundLabel.Text = "PRACTICE"
+	elseif f:GetAttribute("Floor") then
+		self.roundLabel.Text = "FLOOR " .. tostring(f:GetAttribute("Floor"))
 	else
 		self.roundLabel.Text = "ROUND " .. tostring(round)
 	end

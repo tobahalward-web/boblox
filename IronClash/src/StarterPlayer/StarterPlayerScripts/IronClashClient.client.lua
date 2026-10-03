@@ -1,6 +1,7 @@
 -- IRON CLASH :: client entry point
 -- Owns the local fighter's Motor, routes input into moves, plays the camera / HUD / VFX,
--- and animates every visible fighter.
+-- and animates every visible fighter. Between fights the player walks around the hub plaza with
+-- Roblox's normal controls and camera (S.mode == "hub").
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -26,10 +27,14 @@ local Menu = require(script:WaitForChild("Menu"))
 local Touch = require(script:WaitForChild("Touch"))
 local UI = require(script:WaitForChild("UI"))
 local Controls = require(script:WaitForChild("Controls"))
+local HubUI = require(script:WaitForChild("HubUI"))
+local HubAmbient = require(script:WaitForChild("HubAmbient"))
 
-local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", math.huge) -- the server builds every stage first; no timeout warning
 local Net = Remotes:WaitForChild("Net")
 local FXRemote = Remotes:WaitForChild("FX")
+
+HubAmbient.start() -- traffic and pedestrians in the hub's Neon City
 
 ------------------------------------------------------------------------------------------
 -- Roblox defaults off
@@ -49,7 +54,7 @@ task.spawn(function()
 end)
 
 local controls = nil
-local function disableControls()
+local function getControls()
 	if not controls then
 		local ok, pm = pcall(function()
 			return require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
@@ -58,9 +63,25 @@ local function disableControls()
 			controls = pm:GetControls()
 		end
 	end
-	if controls then
+	return controls
+end
+local controlsOn = false
+local function disableControls()
+	controlsOn = false
+	local c = getControls()
+	if c then
 		pcall(function()
-			controls:Disable()
+			c:Disable()
+		end)
+	end
+end
+-- Roblox's walk controls (WASD / thumbstick / jump) are only on while walking around the hub
+local function enableControls()
+	controlsOn = true
+	local c = getControls()
+	if c then
+		pcall(function()
+			c:Enable()
 		end)
 	end
 end
@@ -92,14 +113,43 @@ local function prepCharacter(char)
 	end
 end
 
-player.CharacterAdded:Connect(function(char)
-	task.defer(function()
+-- a hub character is an ordinary walking Humanoid
+local function prepHubCharacter(char)
+	local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 10)
+	if hum then
+		pcall(function()
+			hum.EvaluateStateMachine = true
+		end)
+		hum.PlatformStand = false
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Freefall)
+		end)
+	end
+end
+
+local hubActive = false -- set by enterHub / leave; read by syncCharacterMode
+local function syncCharacterMode(char)
+	if not char or char ~= player.Character then
+		return
+	end
+	if hubActive and char:GetAttribute("Hub") == true then
+		prepHubCharacter(char)
+		enableControls()
+	else
 		prepCharacter(char)
 		disableControls()
+	end
+end
+
+local function watchCharacter(char)
+	char:GetAttributeChangedSignal("Hub"):Connect(function()
+		task.defer(syncCharacterMode, char)
 	end)
-end)
+	task.defer(syncCharacterMode, char)
+end
+player.CharacterAdded:Connect(watchCharacter)
 if player.Character then
-	task.spawn(prepCharacter, player.Character)
+	task.spawn(watchCharacter, player.Character)
 end
 task.spawn(disableControls)
 
@@ -113,6 +163,7 @@ local animator = Animator.new()
 local effects = Effects.new(camera, Sound)
 local hud = HUD.new()
 local menu = Menu.new()
+local hubUI = HubUI.new()
 local touch = Touch.new(input)
 
 -- Rebindable controls: changes apply immediately, are saved by the server, and come back on the next visit.
@@ -220,20 +271,41 @@ local function leaveMatchState()
 	end
 end
 
-local function showMenu()
+-- back to the hub: walk around, normal camera and controls, hub overlay
+local function enterHub(d)
+	-- switching fighter respawns you in the hub: keep the picker open while you browse
+	local keepSelect = S.mode == "hub" and menu.select.Visible
 	leaveMatchState()
-	S.mode = "menu"
+	S.mode = "hub"
+	hubActive = true
 	setCoreUI(false)
 	hud:unbind()
-	menu:show()
-	menu:setStatus("")
-	camera:setMenu(menuCenter)
-	S.theme = Config.Arenas[Config.MenuArena].theme
-	Themes.apply(S.theme)
+	menu:hide()
+	if keepSelect then
+		menu:openSelect()
+	end
+	menu.results.Visible = false
+	menu.resDeadline = nil
+	hubUI:show(d)
+	camera:setHub()
+	S.theme = "Hub"
+	Themes.apply("Hub")
 	Sound.music("Menu")
+	syncCharacterMode(player.Character)
+end
+local showMenu = enterHub
+
+-- leaving the hub for a fight / spectating
+local function leaveHub()
+	hubActive = false
+	hubUI:hide()
+	hubUI:hideChallenge()
+	menu:closeSelect()
+	disableControls()
 end
 
 local function enterMatch(d)
+	leaveHub()
 	leaveMatchState()
 	S.mode = "match"
 	S.data = d
@@ -284,6 +356,7 @@ local function enterMatch(d)
 end
 
 local function enterSpectate(d)
+	leaveHub()
 	leaveMatchState()
 	S.mode = "spectate"
 	S.spectating = true
@@ -315,7 +388,12 @@ local function phase(name, d)
 		local f = S.folder
 		camera:playShot("intro", rootOf(rightChar), 1.5)
 		if f then
-			hud:announce(string.upper(tostring(f:GetAttribute("Name" .. rightIdx) or "")), f:GetAttribute("ArenaName"), UI.Colors.red, 1.3)
+			local rightName = string.upper(tostring(f:GetAttribute("Name" .. rightIdx) or ""))
+			if f:GetAttribute("Floor") then
+				hud:announce("FLOOR " .. tostring(f:GetAttribute("Floor")), "BATTLE TOWER  -  VS " .. rightName, UI.Colors.gold, 1.3)
+			else
+				hud:announce(rightName, f:GetAttribute("ArenaName"), UI.Colors.red, 1.3)
+			end
 		end
 		task.delay(1.6, function()
 			if S.folder == f and f and f.Parent then
@@ -364,15 +442,34 @@ local function phase(name, d)
 end
 
 Net.OnClientEvent:Connect(function(cmd, a, b)
-	if cmd == "Menu" then
-		showMenu()
+	if cmd == "Menu" or cmd == "Hub" then
+		enterHub(a)
 		menu:hideLoading()
 	elseif cmd == "Status" then
-		if S.mode == "menu" or S.mode == "boot" or S.spectating then
-			menu:setStatus(a and a.text or "", false)
+		local text = a and a.text or ""
+		if S.mode == "hub" or S.mode == "boot" then
+			hubUI.cancelable = a ~= nil and a.waiting == true
+			hubUI:setStatus(text, a ~= nil and (a.searching == true or a.challenger == true or a.waiting == true))
+		elseif S.spectating then
+			menu:setStatus(text, false)
 		end
-		if a and a.challenger then
-			menu:setStatus(a.text, true)
+	elseif cmd == "Challenge" then
+		if S.mode == "hub" and type(a) == "table" then
+			hubUI:showChallenge(a)
+			Sound.play("Counter")
+		end
+	elseif cmd == "ChallengeGone" then
+		hubUI:hideChallenge()
+	elseif cmd == "OpenSelect" then
+		if S.mode == "hub" then
+			Sound.play("UI")
+			menu:openSelect()
+		end
+	elseif cmd == "Trial" then
+		hud:setTrial(a)
+		if a and a.justCleared then
+			Sound.play("Counter")
+			hud:flash(Color3.fromRGB(120, 255, 140), 0.35, 0.6)
 		end
 	elseif cmd == "Setup" then
 		enterMatch(a)
@@ -548,6 +645,31 @@ hud.onDummy = function(mode)
 	Sound.play("UI")
 	Net:FireServer("Dummy", mode)
 end
+hud.onTrial = function(index)
+	Sound.play("UI")
+	Net:FireServer("Trial", index)
+end
+hubUI.onFighter = function()
+	Sound.play("UI")
+	menu:openSelect()
+end
+hubUI.onMoves = function()
+	Sound.play("UI")
+	hud:toggleMoves()
+end
+hubUI.onControls = function()
+	Sound.play("UI")
+	controlsUI:toggle()
+end
+hubUI.onAnswer = function(accept, timedOut)
+	Sound.play(accept and "UIConfirm" or "UI")
+	Net:FireServer("ChallengeReply", accept, timedOut == true)
+end
+hubUI.onCancel = function()
+	Sound.play("UI")
+	Net:FireServer("Cancel")
+	hubUI:setStatus("")
+end
 hud.onExit = function()
 	Net:FireServer("Leave")
 end
@@ -606,11 +728,16 @@ local function scanModel(inst)
 		return
 	end
 	local failedAt = animator.failed[inst]
-	if failedAt and os.clock() - failedAt < 3 then
+	if failedAt and os.clock() - failedAt < 0.5 then -- joints can arrive a moment after the model: retry soon
 		return
 	end
 	local root = inst:FindFirstChild("HumanoidRootPart")
 	if not root or root.Anchored then
+		return
+	end
+	if inst:GetAttribute("Hub") == true then
+		-- someone walking around the hub (including us)
+		animator:track(inst, nil, Config.Hub.origin.Y)
 		return
 	end
 	local floorY = arenaFloorNear(root.Position)
@@ -646,6 +773,25 @@ end)
 -- frame loops
 ------------------------------------------------------------------------------------------
 RunService.Heartbeat:Connect(function(dt)
+	if S.mode == "hub" then
+		local c = player.Character
+		local r = c and c:FindFirstChild("HumanoidRootPart")
+		-- our own "challenge" prompt is for other players
+		local pp = r and r:FindFirstChild("IC_Challenge")
+		if pp and pp.Enabled then
+			pp.Enabled = false
+		end
+		-- self-heal: whatever order the join / respawn messages arrived in, a hub character walks
+		if c and r and not r.Anchored and c:GetAttribute("Hub") == true then
+			local h = c:FindFirstChildOfClass("Humanoid")
+			if h and (not h.EvaluateStateMachine or h:GetState() == Enum.HumanoidStateType.Physics) then
+				prepHubCharacter(c)
+			end
+			if not controlsOn then
+				enableControls()
+			end
+		end
+	end
 	local intent, presses = input:update()
 	local m = S.motor
 	if not m then
@@ -688,7 +834,7 @@ task.spawn(function()
 	Net:FireServer("Ready")
 	task.wait(4)
 	if S.mode == "boot" then
-		showMenu()
+		enterHub()
 		menu:hideLoading()
 	end
 end)

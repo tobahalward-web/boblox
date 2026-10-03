@@ -127,13 +127,14 @@ return function(model, O, half)
 		end
 		vcyl(parent, at(0.25), 0.5 * scale, 1.5 * scale, C(130, 126, 120), M.Slate)
 		vcyl(parent, at(1.4), 1.8 * scale, 0.55 * scale, stone, M.Slate)
-		ell(parent, CFrame.new(at(2.4)), V(1.8, 0.55, 1.8) * scale, stone, M.Slate)
+		block(parent, CFrame.new(at(2.4)) * CFrame.Angles(0, math.rad(45), 0), V(1.6, 0.5, 1.6) * scale, stone, M.Slate)
 		block(parent, CFrame.new(at(3.05)), V(1.15 * scale, 1.0 * scale, 1.15 * scale), stone, M.Slate)
 		local glow = block(parent, CFrame.new(at(3.05)), V(1.2 * scale, 0.5 * scale, 0.7 * scale), C(255, 190, 110), M.Neon, { CastShadow = false })
 		local glow2 = block(parent, CFrame.new(at(3.05)), V(0.7 * scale, 0.54 * scale, 1.2 * scale), C(255, 190, 110), M.Neon, { CastShadow = false })
-		ell(parent, CFrame.new(at(3.85)), V(2.3, 0.7, 2.3) * scale, stone, M.Slate)
-		ell(parent, CFrame.new(at(4.35)), V(1.2, 0.6, 1.2) * scale, stone, M.Slate)
-		ball(parent, at(4.75), 0.38 * scale, stone, M.Slate)
+		-- hipped stone roof with a jewel on top
+		block(parent, CFrame.new(at(3.65)), V(2.3, 0.2, 2.3) * scale, stone, M.Slate)
+		Kit.pyramid(parent, CFrame.new(at(3.75)), 2.3 * scale, 0.85 * scale, stone, M.Slate)
+		block(parent, CFrame.new(at(4.72)) * CFrame.Angles(math.rad(45), math.rad(45), 0), V(0.36, 0.36, 0.36) * scale, stone, M.Slate)
 		return glow
 	end
 
@@ -359,7 +360,7 @@ return function(model, O, half)
 			for _ = 1, 5 do
 				local off = V(rng:NextNumber(-2.4, 2.4), rng:NextNumber(-1.0, 2.0), rng:NextNumber(-2.4, 2.4)) * sc
 				local d = rng:NextNumber(1.9, 3.5) * sc
-				ell(trees, CFrame.new(tp + off) * CFrame.Angles(rng:NextNumber(0, 3), rng:NextNumber(0, 3), 0), V(d, d * 0.8, d * 0.95), PINKS[rng:NextInteger(1, #PINKS)], M.Grass, { CastShadow = false })
+				Kit.foliage(trees, tp + off, d, PINKS[rng:NextInteger(1, #PINKS)], M.Grass, rng, { CastShadow = false }) -- faceted clumps, not balls
 			end
 		end
 		-- fallen petals
@@ -442,7 +443,7 @@ return function(model, O, half)
 			local a = k / 30 * math.pi * 2
 			local rx, rz = 17.6, 11.6
 			local d = rng:NextNumber(1.6, 2.6)
-			ell(pond, CFrame.new(V(px + math.cos(a) * rx, ground + 0.15, pz + math.sin(a) * rz)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), V(d * 1.4, d * 0.8, d), C(100 + rng:NextInteger(0, 30), 98 + rng:NextInteger(0, 26), 92 + rng:NextInteger(0, 20)), M.Slate, { CastShadow = false })
+			Kit.rock(pond, V(px + math.cos(a) * rx, ground + 0.15, pz + math.sin(a) * rz), V(d * 1.4, d * 0.75, d), C(100 + rng:NextInteger(0, 30), 98 + rng:NextInteger(0, 26), 92 + rng:NextInteger(0, 20)), M.Slate, rng, { CastShadow = false })
 		end
 		-- lily pads and koi
 		for k = 1, 9 do
@@ -493,6 +494,137 @@ return function(model, O, half)
 	end)
 
 	------------------------------------------------------------------------------------
+	-- atmosphere: falling petals, fireflies, ambient lantern glow
+	------------------------------------------------------------------------------------
+	safe("atmosphere", function()
+		local atmo = Kit.model(model, "Atmosphere")
+		-- ambient cherry blossom petals falling across the whole arena
+		local petalAnchor = Kit.anchor(atmo, O + V(0, 35, -30), V(200, 60, 200))
+		Kit.emitter(petalAnchor, {
+			Texture = Kit.TEX_SOFT, Rate = 20, Lifetime = NumberRange.new(10, 16), Speed = NumberRange.new(0.3, 1.5), SpreadAngle = Vector2.new(45, 45),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0.5) }),
+			Color = ColorSequence.new(C(255, 182, 206), C(255, 160, 190)), LightEmission = 0.1, LightInfluence = 0.8,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(0.8, 0.2), NumberSequenceKeypoint.new(1, 0.9) }),
+			Acceleration = Vector3.new(2, -0.6, 1.5), EmissionDirection = Enum.NormalId.Bottom, Rotation = NumberRange.new(0, 360),
+			RotSpeed = NumberRange.new(-60, 60),
+		})
+		-- second petal layer (white petals)
+		local petalAnchor2 = Kit.anchor(atmo, O + V(0, 25, -20), V(160, 40, 160))
+		Kit.emitter(petalAnchor2, {
+			Texture = Kit.TEX_SOFT, Rate = 12, Lifetime = NumberRange.new(8, 12), Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(30, 30),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0.35) }),
+			Color = ColorSequence.new(C(255, 220, 232), C(255, 240, 246)), LightInfluence = 0.8,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 0.9) }),
+			Acceleration = Vector3.new(1.5, -0.5, 1), EmissionDirection = Enum.NormalId.Bottom, Rotation = NumberRange.new(0, 360),
+			RotSpeed = NumberRange.new(-40, 40),
+		})
+		-- fireflies near the pond and trees
+		for i = 1, 5 do
+			local a = rng:NextNumber(-math.pi * 0.7, math.pi * 0.7)
+			local r = rng:NextNumber(50, 90)
+			local p = Kit.backdrop(O, a, r, 0)
+			local fireflyAnchor = Kit.anchor(atmo, V(p.X, plaza + 4, p.Z), V(8, 3, 8))
+			Kit.emitter(fireflyAnchor, {
+				Texture = Kit.TEX_SPARK, Rate = 3, Lifetime = NumberRange.new(3, 6), Speed = NumberRange.new(0.3, 1), SpreadAngle = Vector2.new(40, 40),
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 0.15), NumberSequenceKeypoint.new(1, 0) }),
+				Color = ColorSequence.new(C(255, 220, 120), C(200, 255, 100)), LightEmission = 1, LightInfluence = 0.2,
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.1, 0), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(0.9, 0), NumberSequenceKeypoint.new(1, 1) }),
+				Acceleration = Vector3.new(0.5, 0.2, 0.3), EmissionDirection = Enum.NormalId.Top,
+			})
+		end
+		-- fireflies specifically around the pond
+		local pondFirefly = Kit.anchor(atmo, V(O.X + 84, plaza + 2, O.Z + 6), V(20, 4, 12))
+		Kit.emitter(pondFirefly, {
+			Texture = Kit.TEX_SPARK, Rate = 6, Lifetime = NumberRange.new(4, 8), Speed = NumberRange.new(0.2, 0.8), SpreadAngle = Vector2.new(30, 20),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 0) }),
+			Color = ColorSequence.new(C(255, 230, 140), C(255, 200, 80)), LightEmission = 1, LightInfluence = 0.2,
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.1, 0), NumberSequenceKeypoint.new(0.6, 0.2), NumberSequenceKeypoint.new(0.9, 0), NumberSequenceKeypoint.new(1, 1) }),
+			Acceleration = Vector3.new(0.3, 0.15, 0.2), EmissionDirection = Enum.NormalId.Top,
+		})
+		-- warm ambient lantern glow lights around the arena perimeter
+		for i = 1, 6 do
+			local a = i / 6 * math.pi * 2 + 0.3
+			local p = Kit.anchor(atmo, O + V(math.cos(a) * 42, 5, math.sin(a) * 42))
+			Kit.light(p, C(255, 170, 90), 18, 0.7)
+		end
+	end)
+
+	safe("courtyardprops", function()
+		local props = Kit.model(model, "CourtyardProps")
+		-- training dummies (makiwara) along the courtyard edges
+		for _, pos in ipairs({
+			{ O.X - 34, O.Z - 12 }, { O.X + 34, O.Z - 12 }, { O.X - 34, O.Z + 12 }, { O.X + 34, O.Z + 12 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			-- wooden post
+			vcyl(props, p + V(0, 2.5, 0), 5, 0.5, C(120, 84, 56), M.Wood)
+			-- straw padding wrapping
+			for _, y in ipairs({ 1.5, 2.5, 3.5 }) do
+				vcyl(props, p + V(0, y, 0), 0.6, 0.7, C(180, 160, 120), M.Fabric, { CastShadow = false })
+			end
+			-- rope ties
+			for _, y in ipairs({ 1.2, 2.2, 3.2, 4.2 }) do
+				vcyl(props, p + V(0, y, 0), 0.1, 0.6, C(140, 110, 70), M.Fabric, { CastShadow = false })
+			end
+			-- base platform
+			block(props, CFrame.new(p + V(0, 0.15, 0)), V(2.0, 0.3, 2.0), C(92, 60, 42), M.Wood)
+		end
+		-- weapon rack (katanas on a stand)
+		local rackPos = V(O.X + 20, plaza, O.Z - 24)
+		-- stand base
+		block(props, CFrame.new(rackPos + V(0, 0.3, 0)), V(3.0, 0.6, 1.2), C(92, 60, 42), M.Wood)
+		-- vertical supports
+		for _, sx in ipairs({ -1, 1 }) do
+			block(props, CFrame.new(rackPos + V(sx * 1.2, 1.4, 0)), V(0.3, 2.2, 0.3), C(60, 40, 28), M.Wood)
+		end
+		-- horizontal crossbar
+		block(props, CFrame.new(rackPos + V(0, 2.4, 0)), V(2.8, 0.2, 0.3), C(60, 40, 28), M.Wood)
+		-- katanas resting on the rack
+		for k = -1, 1 do
+			local kp = rackPos + V(k * 0.9, 2.4, 0)
+			-- scabbard
+			block(props, CFrame.new(kp + V(0, 0.1, 0.3)) * CFrame.Angles(0, 0, math.rad(-5)), V(0.3, 0.2, 3.0), C(40, 28, 22), M.Wood, { CastShadow = false })
+			-- hilt wrapping visible
+			vcyl(props, kp + V(0, 0.05, -0.8), 0.8, 0.22, C(20, 16, 16), M.Wood, { CastShadow = false })
+			-- guard
+			block(props, CFrame.new(kp + V(0, 0.05, -0.4)), V(0.5, 0.1, 0.1), C(176, 140, 60), M.Metal, { CastShadow = false })
+		end
+		-- stone water basin (chozubachi)
+		local basinPos = V(O.X - 22, plaza, O.Z - 28)
+		vcyl(props, basinPos + V(0, 0.6, 0), 1.2, 2.4, C(110, 104, 98), M.Slate)
+		vcyl(props, basinPos + V(0, 0.5, 0), 0.1, 2.0, C(80, 76, 72), M.Slate, { CastShadow = false })
+		-- water surface
+		local water = vcyl(props, basinPos + V(0, 0.3, 0), 0.08, 1.8, C(80, 140, 180), M.Glass, { Transparency = 0.3, Reflectance = 0.3, CastShadow = false })
+		-- bamboo dipper resting on top
+		block(props, CFrame.new(basinPos + V(0.5, 0.45, 0)) * CFrame.Angles(0, math.rad(30), math.rad(15)), V(0.3, 0.15, 2.0), C(130, 120, 80), M.Wood, { CastShadow = false })
+		-- stacked training bricks
+		for _, pos in ipairs({
+			{ O.X - 28, O.Z + 20 }, { O.X + 28, O.Z + 18 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			for layer = 0, 2 do
+				for offset = -1, 1 do
+					block(props, CFrame.new(p + V(offset * 1.0, 0.2 + layer * 0.5, 0)) * CFrame.Angles(0, math.rad(45 + layer * 15), 0), V(0.9, 0.4, 0.5), C(120, 70, 40), M.Wood, { CastShadow = false })
+				end
+			end
+		end
+		-- hanging lantern string between two posts
+		for _, pos in ipairs({
+			{ O.X - 30, O.Z - 35 }, { O.X + 30, O.Z - 35 },
+		}) do
+			local p = V(pos[1], plaza, pos[2])
+			vcyl(props, p + V(0, 2.5, 0), 5, 0.2, C(92, 60, 42), M.Wood)
+			block(props, CFrame.new(p + V(0, 5.1, 0)), V(2.0, 0.2, 0.2), C(60, 40, 28), M.Wood, { CastShadow = false })
+			-- hanging lantern
+			local lanternGlow = ell(props, CFrame.new(p + V(0, 4.3, 0)), V(0.8, 1.0, 0.8), C(255, 190, 110), M.Neon, { Transparency = 0.1, CastShadow = false })
+			Kit.light(lanternGlow, C(255, 180, 100), 12, 0.8)
+			for _, y in ipairs({ 3.95, 4.3, 4.65 }) do
+				vcyl(props, p + V(0, y, 0), 0.06, 0.84, C(30, 24, 24), M.Wood, { CastShadow = false })
+			end
+		end
+	end)
+
+	------------------------------------------------------------------------------------
 	-- far scenery: a pagoda on the hill line and forested mountains
 	------------------------------------------------------------------------------------
 	safe("pagoda", function()
@@ -515,7 +647,7 @@ return function(model, O, half)
 				local f = 1 - k * 0.22
 				block(pag, CFrame.new(base + V(0, y + hgt + 0.3 + k * 0.5, 0)), V(rw * f, 0.5, rw * f), C(48, 52, 62), M.Slate, { CastShadow = false })
 			end
-			ell(pag, CFrame.new(base + V(0, y + hgt + 0.1, 0)), V(rw + 1.6, 0.5, rw + 1.6), C(40, 42, 52), M.Slate, { CastShadow = false })
+			block(pag, CFrame.new(base + V(0, y + hgt + 0.1, 0)), V(rw + 1.6, 0.5, rw + 1.6), C(40, 42, 52), M.Slate, { CastShadow = false })
 			y = y + hgt + 2.4
 		end
 		rod(pag, base + V(0, y, 0), base + V(0, y + 9, 0), 0.5, C(176, 140, 60), M.Metal, { CastShadow = false })

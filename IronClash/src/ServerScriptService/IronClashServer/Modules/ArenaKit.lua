@@ -83,6 +83,78 @@ function Kit.bar(parent, a, b, w, h, color, material, extra, roll)
 	return Kit.block(parent, cf, V(w, h, len), color, material, extra)
 end
 
+------------------------------------------------------------------------------------------
+-- faceted (low-poly) shapes: pyramids, rocks, crystals, foliage - for nature that shouldn't look round
+------------------------------------------------------------------------------------------
+local function wedgeLike(className, parent, props)
+	local p = Instance.new(className)
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanTouch = false
+	p.CanQuery = false
+	p.Material = M.SmoothPlastic
+	for k, v in pairs(props) do
+		p[k] = v
+	end
+	p.Parent = parent
+	return p
+end
+
+-- square pyramid: base centred on `cf`, `w` wide, `h` tall (four CornerWedgeParts meeting at the apex)
+function Kit.pyramid(parent, cf, w, h, color, material, extra)
+	local parts = {}
+	for q = 0, 3 do
+		local rot = CFrame.Angles(0, q * math.pi / 2, 0)
+		-- a CornerWedgePart peaks over its local (+X, -Z) corner: turn each one so that corner is the apex
+		local off = rot * V(-w / 4, h / 2, w / 4)
+		parts[#parts + 1] = wedgeLike("CornerWedgePart", parent, merge({
+			CFrame = cf * CFrame.new(off) * rot, Size = V(w / 2, h, w / 2), Color = color, Material = material or M.SmoothPlastic,
+		}, extra))
+	end
+	return parts
+end
+
+-- a roof ridge over a w x d top centred on `cf` (two WedgeParts back to back, ridge along local X)
+function Kit.ridge(parent, cf, w, d, h, color, material, extra)
+	local a = wedgeLike("WedgePart", parent, merge({
+		CFrame = cf * CFrame.new(0, h / 2, -d / 4), Size = V(w, h, d / 2), Color = color, Material = material or M.SmoothPlastic,
+	}, extra))
+	local b = wedgeLike("WedgePart", parent, merge({
+		CFrame = cf * CFrame.new(0, h / 2, d / 4) * CFrame.Angles(0, math.pi, 0), Size = V(w, h, d / 2), Color = color, Material = material or M.SmoothPlastic,
+	}, extra))
+	return a, b
+end
+
+-- a crystal growing along cf's up axis from its base: a square prism with a chisel point
+function Kit.crystal(parent, cf, d, h, color, material, extra)
+	local tip = math.min(d * 1.3, h * 0.5)
+	local body = h - tip
+	Kit.block(parent, cf * CFrame.new(0, body / 2, 0), V(d, body, d), color, material, extra)
+	return Kit.ridge(parent, cf * CFrame.new(0, body, 0), d, d, tip, color, material, extra)
+end
+
+local function shade(c, f)
+	return Color3.new(math.clamp(c.R * f, 0, 1), math.clamp(c.G * f, 0, 1), math.clamp(c.B * f, 0, 1))
+end
+Kit.shade = shade
+
+-- a faceted boulder: two tipped blocks turned 45 degrees to each other, so the corners read as chipped facets
+function Kit.rock(parent, pos, size, color, material, rng, extra)
+	rng = rng or Random.new()
+	local base = CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	local a = Kit.block(parent, base * CFrame.Angles(rng:NextNumber(-0.25, 0.25), 0, rng:NextNumber(-0.25, 0.25)), size, color, material, extra)
+	local b = Kit.block(parent, base * CFrame.new(0, size.Y * 0.08, 0) * CFrame.Angles(rng:NextNumber(-0.35, 0.35), math.rad(45), rng:NextNumber(-0.35, 0.35)),
+		V(size.X * 0.82, size.Y * 0.92, size.Z * 0.82), shade(color, 0.9), material, extra)
+	return a, b
+end
+
+-- one clump of leaves / blossom: a tumbled, slightly squashed block (low-poly foliage, not a ball)
+function Kit.foliage(parent, pos, d, color, material, rng, extra)
+	rng = rng or Random.new()
+	local cf = CFrame.new(pos) * CFrame.Angles(rng:NextNumber(-0.6, 0.6), rng:NextNumber(0, math.pi * 2), rng:NextNumber(-0.6, 0.6))
+	return Kit.block(parent, cf, V(d, d * rng:NextNumber(0.62, 0.8), d * rng:NextNumber(0.8, 0.95)), color, material, extra)
+end
+
 -- cylinder from a to b
 function Kit.rod(parent, a, b, d, color, material, extra)
 	local len = (b - a).Magnitude

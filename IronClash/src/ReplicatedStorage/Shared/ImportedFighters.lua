@@ -8,7 +8,9 @@
 --     HumanoidRootPart and a Humanoid, and every non-body part (hair, hats, armour, extra limbs)
 --     is welded to the body part it belongs to. Shared/Rig drives them with its R6 mode: shoulders,
 --     hips and neck bend, limbs stay rigid (an R6 limb is a single part).
---   * R15 bodies keep their own joints; only scripts are stripped and accessories re-welded.
+--   * R15 bodies keep their own joints; scripts are stripped, accessories re-welded, and they get the
+--     IRON CLASH skeleton's extra spine and collarbone bones (see addSkeletonBones) so they animate
+--     like the procedural fighters.
 --
 -- Nothing here is specific to one character: every model goes through the same steps.
 
@@ -52,6 +54,42 @@ local function strip(model)
 	end
 end
 
+-- invisible skeleton bones (added by addSkeletonBones, or already present in a model that was saved from a
+-- built fighter). They are part of the body, never decorations to re-weld.
+local SKELETON_BONES = { MidTorso = true, LeftClavicle = true, RightClavicle = true, LeftToes = true, RightToes = true, Jaw = true }
+
+-- Accessories that have drifted away from the body (dragged in Studio, or saved out of place) are snapped back
+-- onto their attachment, the way Roblox itself wears an accessory. Ones already in place are left alone.
+local function snapAccessories(model)
+	local bodyAtt = {}
+	for _, p in ipairs(model:GetChildren()) do
+		if p:IsA("BasePart") then
+			for _, a in ipairs(p:GetChildren()) do
+				if a:IsA("Attachment") and not bodyAtt[a.Name] then
+					bodyAtt[a.Name] = a
+				end
+			end
+		end
+	end
+	for _, acc in ipairs(model:GetChildren()) do
+		if acc:IsA("Accessory") or acc:IsA("Hat") then
+			local h = acc:FindFirstChild("Handle")
+			if h and h:IsA("BasePart") then
+				for _, a in ipairs(h:GetChildren()) do
+					local target = a:IsA("Attachment") and bodyAtt[a.Name]
+					if target then
+						local want = target.WorldCFrame * a.CFrame:Inverse()
+						if (want.Position - h.Position).Magnitude > 0.5 then
+							h.CFrame = want
+						end
+						break
+					end
+				end
+			end
+		end
+	end
+end
+
 -- the BasePart named `name` among a model's direct children (models can also hold a Model with that name)
 local function findPart(model, name)
 	for _, c in ipairs(model:GetChildren()) do
@@ -75,7 +113,7 @@ local function collectExtras(model, body, hostTable, groupOf)
 	end
 	local extras = {}
 	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") and not isBodyPart[d] and d.Name ~= "HumanoidRootPart" then
+		if d:IsA("BasePart") and not isBodyPart[d] and d.Name ~= "HumanoidRootPart" and not (SKELETON_BONES[d.Name] and d.Parent == model) then
 			local host
 			-- 1. the part was assigned to a body region (fitted bodies)
 			if groupOf and groupOf[d] then
@@ -547,6 +585,132 @@ end
 ------------------------------------------------------------------------------------------
 -- R15
 ------------------------------------------------------------------------------------------
+-- standard R15 joints (name, Part0, Part1 and the rig-attachment pair that defines the pivot)
+local R15_JOINTS = {
+	{ "Root", "HumanoidRootPart", "LowerTorso", "RootRigAttachment" },
+	{ "Waist", "LowerTorso", "UpperTorso", "WaistRigAttachment" },
+	{ "Neck", "UpperTorso", "Head", "NeckRigAttachment" },
+	{ "LeftShoulder", "UpperTorso", "LeftUpperArm", "LeftShoulderRigAttachment" },
+	{ "LeftElbow", "LeftUpperArm", "LeftLowerArm", "LeftElbowRigAttachment" },
+	{ "LeftWrist", "LeftLowerArm", "LeftHand", "LeftWristRigAttachment" },
+	{ "LeftHip", "LowerTorso", "LeftUpperLeg", "LeftHipRigAttachment" },
+	{ "LeftKnee", "LeftUpperLeg", "LeftLowerLeg", "LeftKneeRigAttachment" },
+	{ "LeftAnkle", "LeftLowerLeg", "LeftFoot", "LeftAnkleRigAttachment" },
+	{ "RightShoulder", "UpperTorso", "RightUpperArm", "RightShoulderRigAttachment" },
+	{ "RightElbow", "RightUpperArm", "RightLowerArm", "RightElbowRigAttachment" },
+	{ "RightWrist", "RightLowerArm", "RightHand", "RightWristRigAttachment" },
+	{ "RightHip", "LowerTorso", "RightUpperLeg", "RightHipRigAttachment" },
+	{ "RightKnee", "RightUpperLeg", "RightLowerLeg", "RightKneeRigAttachment" },
+	{ "RightAnkle", "RightLowerLeg", "RightFoot", "RightAnkleRigAttachment" },
+}
+
+-- attachment `name` on `part`, created at the part's centre when the import lacks it
+local function rigAttachment(part, name)
+	local a = part and part:FindFirstChild(name)
+	if not a then
+		a = Instance.new("Attachment")
+		a.Name = name
+		a.Parent = part
+	end
+	return a
+end
+
+-- Imported R15 bodies often arrive with no Motor6Ds at all. Every standard joint is fully defined by its
+-- rig-attachment pair (the two attachments coincide in the A-pose), so missing ones are rebuilt here;
+-- joints that already exist (by name, anywhere in the model) are left untouched.
+local function buildMissingR15Joints(model, P, root)
+	for _, j in ipairs(R15_JOINTS) do
+		local part0 = (j[2] == "HumanoidRootPart") and root or P[j[2]]
+		local part1 = P[j[3]]
+		if part0 and part1 and not model:FindFirstChild(j[1], true) then
+			local a0 = rigAttachment(part0, j[4])
+			local a1 = rigAttachment(part1, j[4])
+			local m = Instance.new("Motor6D")
+			m.Name = j[1]
+			m.Part0 = part0
+			m.Part1 = part1
+			m.C0 = a0.CFrame
+			m.C1 = a1.CFrame
+			m.Parent = part1
+		end
+	end
+end
+
+-- The IRON CLASH skeleton has bones a stock R15 body lacks. The ones that move visible geometry on an
+-- imported body are added here as invisible bones, so imported fighters animate like the procedural ones:
+--   * MidTorso splits the spine (LowerTorso > MidTorso > UpperTorso). The waist bend is then shared by the
+--     abdomen ("Waist") and the chest ("Chest"), so the body curves instead of hinging in one place.
+--   * LeftClavicle / RightClavicle sit between the chest and each upper arm, so the shoulders shrug when
+--     the arms go up or out.
+-- Toes and jaw are left out: an imported body has no separate geometry for them to move.
+local CHEST_SPLIT = 0.41 -- chest pivot height between waist and neck (the procedural skeleton's ratio)
+local CLAVICLE_IN = 0.3 -- collarbone pivot's distance from the centre line, as a fraction of the shoulder's
+
+local function jointBetween(model, part0, part1)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Motor6D") and d.Part0 == part0 and d.Part1 == part1 then
+			return d
+		end
+	end
+	return nil
+end
+
+local function bone(model, name, size, cf)
+	local b = Instance.new("Part")
+	b.Name = name
+	b.Size = size
+	b.CFrame = cf
+	b.Transparency = 1
+	b.Anchored = false
+	b.CanCollide = false
+	b.CanTouch = false
+	b.CanQuery = false
+	b.Massless = true
+	b.Parent = model
+	return b
+end
+
+-- a Motor6D whose pivot is the world frame `pivotCF`, given where both parts sit at rest
+local function pivotMotor(name, part0, cf0, part1, cf1, pivotCF)
+	return motor(name, part0, part1, cf0:ToObjectSpace(pivotCF), cf1:ToObjectSpace(pivotCF))
+end
+
+local function addSkeletonBones(model, P)
+	if findPart(model, "MidTorso") then
+		return -- already has the full skeleton
+	end
+	local lt, ut = P.LowerTorso, P.UpperTorso
+	local waist = jointBetween(model, lt, ut)
+	local neck = jointBetween(model, ut, P.Head)
+	-- work from the joint chain (not where the parts happen to sit) so a dragged part can't skew the bones
+	local utCF = waist and (lt.CFrame * waist.C0 * waist.C1:Inverse()) or ut.CFrame
+	if waist and neck then
+		local waistCF = lt.CFrame * waist.C0
+		local neckPos = (utCF * neck.C0).Position
+		local chestCF = waistCF.Rotation + waistCF.Position:Lerp(neckPos, CHEST_SPLIT)
+		local height = math.max((chestCF.Position - waistCF.Position).Magnitude, 0.1)
+		local midCF = utCF.Rotation + waistCF.Position:Lerp(chestCF.Position, 0.5)
+		local mid = bone(model, "MidTorso", Vector3.new(ut.Size.X * 0.6, height, ut.Size.Z * 0.6), midCF)
+		pivotMotor("Waist", lt, lt.CFrame, mid, midCF, waistCF)
+		pivotMotor("Chest", mid, midCF, ut, utCF, chestCF)
+		waist:Destroy()
+	end
+	for _, side in ipairs({ "Left", "Right" }) do
+		local shoulder = jointBetween(model, ut, P[side .. "UpperArm"])
+		if shoulder then
+			local s = shoulder.C0.Position
+			local shoulderCF = utCF * shoulder.C0
+			local pivotCF = utCF * CFrame.new(s.X * CLAVICLE_IN, s.Y, s.Z)
+			local len = math.max(math.abs(s.X) * (1 - CLAVICLE_IN), 0.1)
+			local clCF = utCF * CFrame.new(s.X * (1 + CLAVICLE_IN) / 2, s.Y, s.Z)
+			local cl = bone(model, side .. "Clavicle", Vector3.new(len, 0.25, 0.3), clCF)
+			pivotMotor(side .. "Clavicle", ut, utCF, cl, clCF, pivotCF)
+			shoulder.Part0 = cl
+			shoulder.C0 = clCF:ToObjectSpace(shoulderCF)
+		end
+	end
+end
+
 local function prepareR15(model)
 	local P = {}
 	for _, n in ipairs(R15_PARTS) do
@@ -555,6 +719,18 @@ local function prepareR15(model)
 			return false, "missing " .. n
 		end
 	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if not root then
+		root = Instance.new("Part")
+		root.Name = "HumanoidRootPart"
+		root.Size = Vector3.new(2, 2, 1)
+		root.Transparency = 1
+		root.CanCollide = false
+		root.Anchored = false
+		root.CFrame = P.LowerTorso.CFrame * rigAttachment(P.LowerTorso, "RootRigAttachment").CFrame
+		root.Parent = model
+	end
+	buildMissingR15Joints(model, P, root)
 	local extras = collectExtras(model, P, HOST_R15)
 	applyBodyColors(model, R15_PARTS)
 	for _, d in ipairs(model:GetDescendants()) do
@@ -564,10 +740,7 @@ local function prepareR15(model)
 	end
 	attachExtras(extras)
 	removeEmptyContainers(model)
-	local root = model:FindFirstChild("HumanoidRootPart")
-	if not root then
-		return false, "missing HumanoidRootPart"
-	end
+	addSkeletonBones(model, P) -- after the extras are welded, so the new bones aren't mistaken for one
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	if not hum then
 		hum = Instance.new("Humanoid")
@@ -595,6 +768,7 @@ function ImportedFighters.build(def, displayName)
 	local model = src:Clone()
 	model.Name = displayName or def.name
 	strip(model)
+	snapAccessories(model)
 	local ok, why
 	local hasR6 = true
 	for _, n in ipairs(R6_PARTS) do
@@ -610,6 +784,13 @@ function ImportedFighters.build(def, displayName)
 	if not ok then
 		model:Destroy()
 		return nil, why
+	end
+	-- Toolbox models are often saved anchored so they stand still in the editor; an anchored body part can't
+	-- be moved by its joints, so the body would freeze while the root walks away without it
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = false
+		end
 	end
 	local pal = def.palettes and def.palettes[1]
 	model:SetAttribute("FighterId", def.id)

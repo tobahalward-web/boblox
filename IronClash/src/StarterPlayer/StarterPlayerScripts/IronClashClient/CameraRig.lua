@@ -44,6 +44,12 @@ function CameraRig:setMenu(center)
 	self.shot = nil
 end
 
+-- hub: Roblox's own follow camera (players walk around freely)
+function CameraRig:setHub()
+	self.mode = "hub"
+	self.shot = nil
+end
+
 function CameraRig:setFight(leftRoot, rightRoot, center)
 	self.mode = "fight"
 	self.left = leftRoot
@@ -116,8 +122,23 @@ function CameraRig:update(dt)
 	if not cam then
 		return
 	end
-	cam.CameraType = Enum.CameraType.Scriptable
 	self.t = self.t + dt
+	if self.mode == "hub" and not self.shot then
+		if cam.CameraType ~= Enum.CameraType.Custom then
+			cam.CameraType = Enum.CameraType.Custom
+		end
+		local char = Players.LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum and cam.CameraSubject ~= hum then
+			cam.CameraSubject = hum
+		end
+		self.fov = self.fov + (70 - self.fov) * math.min(1, dt * 4)
+		cam.FieldOfView = self.fov
+		self.cf = cam.CFrame
+		self.focusDist = (cam.CFrame.Position - cam.Focus.Position).Magnitude
+		return cam.CFrame, self.focusDist
+	end
+	cam.CameraType = Enum.CameraType.Scriptable
 	local cf
 	local focusDist = 20
 	local fov = 50
