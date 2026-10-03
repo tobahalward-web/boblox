@@ -965,7 +965,11 @@ function FighterModels.build(id, palette, displayName)
 			return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ImportedFighters"))
 		end)
 		if ok and IF then
-			local m = IF.build(def, displayName)
+			local m, why = IF.build(def, displayName)
+			if not m then
+				-- say why the imported body was not used (the procedural body takes over silently otherwise)
+				warn(string.format("[IronClash] %s: could not use model '%s' from ReplicatedStorage/FighterAssets (%s)", def.id, tostring(def.asset), tostring(why)))
+			end
 			if not m and def.assetFallback then
 				m = IF.build({ id = def.id, asset = def.assetFallback, name = def.name, palettes = def.palettes, layout = def.layout }, displayName)
 			end
