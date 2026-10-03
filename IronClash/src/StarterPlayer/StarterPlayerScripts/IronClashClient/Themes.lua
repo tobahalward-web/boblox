@@ -57,34 +57,35 @@ Themes.Presets = {
 	-- Lighting.Atmosphere: Color is the hue of the sky near the sun, Decay the hue away from it, and Haze + Glare
 	-- are what make the glow around the horizon visible. The sun drifts slowly (Drift) so the light keeps moving.
 	HubDusk = {
-		-- golden hour: a low sun, warm orange glow fading to dusty violet opposite it, pink under-lit clouds, long soft shadows
-		ClockTime = 17.55, Brightness = 2.3, GeographicLatitude = 30,
-		Ambient = C(108, 94, 122), OutdoorAmbient = C(156, 128, 146),
-		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.1,
-		ColorShift_Top = C(255, 186, 132), ColorShift_Bottom = C(96, 78, 140),
-		Atmosphere = { Density = 0.3, Offset = 0.18, Color = C(255, 170, 118), Decay = C(146, 84, 150), Glare = 0.9, Haze = 1.9 },
-		Bloom = { Intensity = 0.5, Size = 26, Threshold = 1.5 },
-		CC = { Brightness = 0.02, Contrast = 0.08, Saturation = 0.16, TintColor = C(255, 238, 230) },
-		SunRays = { Intensity = 0.14, Spread = 0.85 },
-		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
+		-- grimy golden hour: a low, dull-orange sun, deep ambient shadow, dirty violet haze and heavy contrast so the
+		-- districts read as layers; lights and bloom are held back so only the real glow stands out
+		ClockTime = 17.55, Brightness = 1.35, GeographicLatitude = 30,
+		Ambient = C(62, 54, 72), OutdoorAmbient = C(92, 76, 92),
+		EnvironmentDiffuseScale = 0.75, EnvironmentSpecularScale = 0.6, ExposureCompensation = -0.25,
+		ColorShift_Top = C(236, 164, 112), ColorShift_Bottom = C(60, 48, 86),
+		Atmosphere = { Density = 0.36, Offset = 0.18, Color = C(222, 150, 112), Decay = C(110, 70, 112), Glare = 0.65, Haze = 2.2 },
+		Bloom = { Intensity = 0.22, Size = 22, Threshold = 2.0 },
+		CC = { Brightness = -0.03, Contrast = 0.22, Saturation = -0.14, TintColor = C(236, 224, 214) },
+		SunRays = { Intensity = 0.07, Spread = 0.8 },
+		DOF = { FarIntensity = 0.12, NearIntensity = 0, InFocusRadius = 70 },
 		Sky = { StarCount = 1400, CelestialBodiesShown = true, SunAngularSize = 22, MoonAngularSize = 12 },
-		Clouds = { Cover = 0.62, Density = 0.5, Color = C(255, 170, 138) },
+		Clouds = { Cover = 0.72, Density = 0.6, Color = C(196, 124, 106) },
 		Particles = "petals",
 		Drift = { base = 17.55, amp = 0.25, period = 600 }, -- ClockTime swings between 17.3 and 17.8 every ten minutes
 	},
 	HubDawn = {
-		-- first light: a pale peach glow melting into periwinkle, soft pink clouds, cool blue shadows
-		ClockTime = 6.45, Brightness = 2.0, GeographicLatitude = 30,
-		Ambient = C(112, 110, 136), OutdoorAmbient = C(150, 148, 176),
-		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.05,
-		ColorShift_Top = C(255, 208, 170), ColorShift_Bottom = C(90, 96, 150),
-		Atmosphere = { Density = 0.3, Offset = 0.2, Color = C(255, 196, 160), Decay = C(118, 138, 205), Glare = 0.75, Haze = 1.7 },
-		Bloom = { Intensity = 0.4, Size = 26, Threshold = 1.6 },
-		CC = { Brightness = 0.02, Contrast = 0.06, Saturation = 0.12, TintColor = C(255, 244, 238) },
-		SunRays = { Intensity = 0.1, Spread = 0.8 },
-		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
+		-- grimy first light: cold grey-blue shadow, a thin peach glow low on the horizon, heavy mist
+		ClockTime = 6.45, Brightness = 1.2, GeographicLatitude = 30,
+		Ambient = C(66, 66, 84), OutdoorAmbient = C(94, 94, 118),
+		EnvironmentDiffuseScale = 0.75, EnvironmentSpecularScale = 0.6, ExposureCompensation = -0.2,
+		ColorShift_Top = C(232, 180, 146), ColorShift_Bottom = C(58, 64, 100),
+		Atmosphere = { Density = 0.36, Offset = 0.2, Color = C(226, 170, 140), Decay = C(88, 100, 150), Glare = 0.5, Haze = 2.0 },
+		Bloom = { Intensity = 0.2, Size = 22, Threshold = 2.0 },
+		CC = { Brightness = -0.02, Contrast = 0.2, Saturation = -0.1, TintColor = C(232, 228, 226) },
+		SunRays = { Intensity = 0.06, Spread = 0.8 },
+		DOF = { FarIntensity = 0.12, NearIntensity = 0, InFocusRadius = 70 },
 		Sky = { StarCount = 900, CelestialBodiesShown = true, SunAngularSize = 20, MoonAngularSize = 12 },
-		Clouds = { Cover = 0.6, Density = 0.45, Color = C(255, 208, 206) },
+		Clouds = { Cover = 0.7, Density = 0.55, Color = C(200, 150, 150) },
 		Particles = "petals",
 		Drift = { base = 6.45, amp = 0.25, period = 600 }, -- 6.2 to 6.7
 	},

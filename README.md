@@ -51,9 +51,15 @@ script sources in `IronClash/src` by `tools/build.py`, starting from `IronClash_
   pagoda and shrine, farmhouses, cherry trees, bamboo and drifting petals; disciples, villagers and swimming koi.
 - Everything a district builds is scenery behind the plaza wall. People, carts, skaters and koi live under each district's
   `Movers` model and are moved on every client by `HubAmbient` along the paths stored in their attributes.
-- **Hub sky**: a golden-hour dusk by default (`Themes.Presets.HubDusk`: low sun, warm orange glow fading to dusty violet,
-  pink under-lit clouds, bloom and sun rays) with a pastel dawn alternative (`HubDawn`). Set `Config.Hub.sky = "dawn"`
-  to switch. The sun drifts slowly, so the light and shadows keep moving. The place file's saved lighting is the dusk look too.
+- **Hub sky and mood**: a grimy dusk by default (`Themes.Presets.HubDusk`: low dull-orange sun, deep ambient shadow, dirty violet
+  haze, heavy contrast, held-back bloom) with a pastel-but-gloomy dawn alternative (`HubDawn`). The sun drifts slowly, so the
+  light and shadows keep moving. `python3 tools/bake_lighting.py` writes the chosen sky into the place file's saved lighting
+  so Studio shows it in edit mode too.
+- **Hub grit** (`HubGrit`, run once from `Hub.build`): dims every light by `Config.Hub.lightScale`, switches shadows on for big
+  structures, roofs, rocks, trees and poles (`Config.Hub.shadows`), and adds contact shading round the foot of walls, towers and
+  columns, soot / oil / crack / puddle stains over pavements, plaza and bare ground, shadow blobs under trees and low haze banks
+  (`Config.Hub.grime`). Everything it adds lives under `Hub.Grit`.
+  Settings: `Config.Hub.sky` ("dusk" | "dawn"), `lightScale` (1 = as built), `shadows`, `grime`.
 - `HubOutskirts` levels the terrain under every district, keeps the generic scatter props off them, and builds the rest
   of the land (hills, spires, pines) around them.
 
@@ -69,6 +75,7 @@ python3 tools/extract.py IronClash_5.rbxlx IronClash      # place -> source tree
 python3 tools/build.py IronClash IronClash_6.rbxlx        # source tree -> place
 python3 tools/preview.py arena 2 out.png game             # geometry preview (not a Studio render)
 python3 tools/preview_hub.py out.png volcano plaza wide   # hub district preview (volcano|frozen|dojo|city; plaza gate wide top ...)
+python3 tools/bake_lighting.py                            # bake the hub sky preset into the place template's saved lighting
 python3 -m unittest discover -s tests                     # headless tests (needs `pip install lupa numpy pillow`)
 ```
 

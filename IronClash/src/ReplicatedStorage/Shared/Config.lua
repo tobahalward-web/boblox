@@ -81,6 +81,9 @@ Config.Hub = {
 	jumpPower = 46,
 	challengeTime = 15, -- seconds a hub challenge waits for an answer
 	sky = "dusk", -- the hub's sky: "dusk" (golden hour, sun setting) or "dawn" (pastel sunrise)
+	lightScale = 0.55, -- every light in the hub is dimmed to this fraction of its built brightness (1 = as built)
+	shadows = true, -- big structures, roofs, rocks, trees and poles cast shadows (turn off if it costs too much on weak devices)
+	grime = true, -- contact shading round walls and towers, soot / oil / crack / puddle stains, and low haze
 }
 
 -- battle tower ---------------------------------------------------------

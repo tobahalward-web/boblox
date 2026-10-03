@@ -65,10 +65,27 @@ class HubSky(unittest.TestCase):
         dusk = self.preset("HubDusk")
         h, m = int(dusk.ClockTime), round((dusk.ClockTime % 1) * 60)
         self.assertIn(f'<string name="TimeOfDay">{h:02d}:{m:02d}:00</string>', text)
-        i = text.index('<Item class="Atmosphere"')
-        atmo = text[i:text.index("</Item>", i)]
-        self.assertAlmostEqual(float(re.search(r'name="Haze">([^<]+)<', atmo).group(1)), dusk.Atmosphere.Haze, places=3)
-        self.assertAlmostEqual(float(re.search(r'name="Glare">([^<]+)<', atmo).group(1)), dusk.Atmosphere.Glare, places=3)
+        def grab(cls, tag, name):
+            i = text.index(f'<Item class="{cls}"')
+            blk = text[i:text.index("</Item>", i)]
+            return float(re.search(rf'<{tag} name="{name}">([^<]+)<', blk).group(1))
+        for name in ("Haze", "Glare", "Density", "Offset"):
+            self.assertAlmostEqual(grab("Atmosphere", "float", name), dusk.Atmosphere[name], places=4, msg=name)
+        self.assertAlmostEqual(grab("BloomEffect", "float", "Intensity"), dusk.Bloom.Intensity, places=4)
+        self.assertAlmostEqual(grab("ColorCorrectionEffect", "float", "Contrast"), dusk.CC.Contrast, places=4)
+        self.assertAlmostEqual(grab("Clouds", "float", "Cover"), dusk.Clouds.Cover, places=4)
+        i = text.index('<Item class="Lighting"')
+        self.assertAlmostEqual(float(re.search(r'name="Brightness">([^<]+)<', text[i:i + 3000]).group(1)), dusk.Brightness, places=4)
+
+    def test_the_look_is_moody_not_bright(self):
+        for name in ("HubDusk", "HubDawn"):
+            p = self.preset(name)
+            self.assertLess(p.Brightness, 1.8, f"{name} sun is too bright for a grimy look")
+            self.assertLess(p.ExposureCompensation, 0.05)
+            self.assertLess(p.Bloom.Intensity, 0.4)
+            self.assertGreater(p.CC.Contrast, 0.12)
+            self.assertLessEqual(p.CC.Saturation, 0)
+            self.assertLess(max(p.Ambient.R, p.Ambient.G, p.Ambient.B), 0.4)
 
 
 if __name__ == "__main__":

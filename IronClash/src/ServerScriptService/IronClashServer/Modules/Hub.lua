@@ -535,6 +535,13 @@ function Hub.build()
 			warn("[IronClash] hub build step failed: " .. tostring(err))
 		end
 	end
+	-- the finishing pass: dimmer lights, shadows, contact shading, grime and haze (see HubGrit)
+	local ok, report = pcall(function()
+		return require(script.Parent:WaitForChild("HubGrit")).apply(f, O)
+	end)
+	if not ok then
+		warn("[IronClash] hub grit failed: " .. tostring(report))
+	end
 	f.Parent = workspace
 	return f
 end
