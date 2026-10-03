@@ -204,7 +204,7 @@ class Imported(unittest.TestCase):
                                    "palettes": self.g.lua.table_from({1: self.g.lua.table_from({"glow": self.g.env.Color3.new(1, 1, 1)})})})
         res = self.IF.build(d, "x")
         self.assertIsNone(res[0] if isinstance(res, tuple) else res)  # the loader itself only tries one asset...
-        self.assertEqual(self.FM.get("GOR").assetFallback, "LUFFY")  # ...FighterModels.build does the fallback
+        self.assertEqual(self.FM.get("GOR").asset, "LUFFY")  # GOR uses the Luffy model directly
 
     # ---- bendable limbs (R6 body split into an R15-style body) -----------------------------------
     R15_PARTS = ["Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand",

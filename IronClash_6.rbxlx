@@ -3760,7 +3760,7 @@ local ROSTER = {
 		style = { hairScale = 1.45, auraRate = 16, hairStyle = "spiky", jacket = "gi", sleeves = "none", pantsStyle = "gi", brows = "angry", smirk = 8, bulk = 1.08 },
 	},
 	{
-		id = "GOR", asset = "YUJI", assetFallback = "LUFFY", name = "GOR", title = "THE SCOUT",
+		id = "GOR", asset = "LUFFY", name = "GOR", title = "THE SCOUT",
 		bio = "A furious young soldier in a green cloak, strapped into his gear and out for blood.",
 		palettes = {
 			{ skin = C(236, 196, 164), hair = C(84, 58, 40), eye = C(50, 190, 130), top = C(238, 236, 228), trim = C(196, 170, 100),
