@@ -53,20 +53,40 @@ Themes.Presets = {
 		Clouds = { Cover = 0.65, Density = 0.6, Color = C(80, 50, 44) },
 		Particles = "embers",
 	},
-	Hub = {
-		-- golden-hour plaza: warm sun, cool shadows, a little haze so the far scenery fades out
-		ClockTime = 17.4, Brightness = 2.1, GeographicLatitude = 30,
-		Ambient = C(118, 112, 124), OutdoorAmbient = C(160, 152, 168),
-		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.05,
-		ColorShift_Top = C(255, 222, 186), ColorShift_Bottom = C(80, 70, 110),
-		Atmosphere = { Density = 0.26, Offset = 0.12, Color = C(226, 200, 196), Decay = C(150, 120, 160), Glare = 0.2, Haze = 1.1 },
-		Bloom = { Intensity = 0.35, Size = 24, Threshold = 1.8 },
-		CC = { Brightness = 0.02, Contrast = 0.05, Saturation = 0.08, TintColor = C(255, 246, 238) },
-		SunRays = { Intensity = 0.06, Spread = 0.6 },
+	-- The hub's sky. Two looks, picked by Config.Hub.sky (Presets.Hub below points at the chosen one).
+	-- Lighting.Atmosphere: Color is the hue of the sky near the sun, Decay the hue away from it, and Haze + Glare
+	-- are what make the glow around the horizon visible. The sun drifts slowly (Drift) so the light keeps moving.
+	HubDusk = {
+		-- golden hour: a low sun, warm orange glow fading to dusty violet opposite it, pink under-lit clouds, long soft shadows
+		ClockTime = 17.55, Brightness = 2.3, GeographicLatitude = 30,
+		Ambient = C(108, 94, 122), OutdoorAmbient = C(156, 128, 146),
+		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.1,
+		ColorShift_Top = C(255, 186, 132), ColorShift_Bottom = C(96, 78, 140),
+		Atmosphere = { Density = 0.3, Offset = 0.18, Color = C(255, 170, 118), Decay = C(146, 84, 150), Glare = 0.9, Haze = 1.9 },
+		Bloom = { Intensity = 0.5, Size = 26, Threshold = 1.5 },
+		CC = { Brightness = 0.02, Contrast = 0.08, Saturation = 0.16, TintColor = C(255, 238, 230) },
+		SunRays = { Intensity = 0.14, Spread = 0.85 },
 		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
-		Sky = { StarCount = 400, CelestialBodiesShown = true, SunAngularSize = 16 },
-		Clouds = { Cover = 0.55, Density = 0.4, Color = C(255, 214, 196) },
+		Sky = { StarCount = 1400, CelestialBodiesShown = true, SunAngularSize = 22, MoonAngularSize = 12 },
+		Clouds = { Cover = 0.62, Density = 0.5, Color = C(255, 170, 138) },
 		Particles = "petals",
+		Drift = { base = 17.55, amp = 0.25, period = 600 }, -- ClockTime swings between 17.3 and 17.8 every ten minutes
+	},
+	HubDawn = {
+		-- first light: a pale peach glow melting into periwinkle, soft pink clouds, cool blue shadows
+		ClockTime = 6.45, Brightness = 2.0, GeographicLatitude = 30,
+		Ambient = C(112, 110, 136), OutdoorAmbient = C(150, 148, 176),
+		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.05,
+		ColorShift_Top = C(255, 208, 170), ColorShift_Bottom = C(90, 96, 150),
+		Atmosphere = { Density = 0.3, Offset = 0.2, Color = C(255, 196, 160), Decay = C(118, 138, 205), Glare = 0.75, Haze = 1.7 },
+		Bloom = { Intensity = 0.4, Size = 26, Threshold = 1.6 },
+		CC = { Brightness = 0.02, Contrast = 0.06, Saturation = 0.12, TintColor = C(255, 244, 238) },
+		SunRays = { Intensity = 0.1, Spread = 0.8 },
+		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
+		Sky = { StarCount = 900, CelestialBodiesShown = true, SunAngularSize = 20, MoonAngularSize = 12 },
+		Clouds = { Cover = 0.6, Density = 0.45, Color = C(255, 208, 206) },
+		Particles = "petals",
+		Drift = { base = 6.45, amp = 0.25, period = 600 }, -- 6.2 to 6.7
 	},
 	Frozen = {
 		ClockTime = 10.5, Brightness = 1.8, GeographicLatitude = 50,
@@ -83,6 +103,15 @@ Themes.Presets = {
 		Particles = "snow",
 	},
 }
+
+-- the preset the hub uses (Themes.apply("Hub")): dusk unless Config.Hub.sky asks for dawn
+do
+	local ok, Config = pcall(function()
+		return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+	end)
+	local dawn = ok and Config.Hub and Config.Hub.sky == "dawn"
+	Themes.Presets.Hub = dawn and Themes.Presets.HubDawn or Themes.Presets.HubDusk
+end
 
 local function ensure(className, name, parent)
 	local inst = parent:FindFirstChild(name)
@@ -171,6 +200,18 @@ function Themes.followCamera(cf)
 end
 
 local current = nil
+-- the sun's slow drift while a preset has one (see Presets.HubDusk): eases ClockTime back and forth around its base
+local drift, driftStart = nil, 0
+task.spawn(function()
+	while true do
+		task.wait(0.25)
+		if drift then
+			pcall(function()
+				Lighting.ClockTime = drift.base + drift.amp * math.sin((os.clock() - driftStart) * 2 * math.pi / drift.period)
+			end)
+		end
+	end
+end)
 
 function Themes.apply(name, instant)
 	local preset = Themes.Presets[name] or Themes.Presets.Neon
@@ -191,6 +232,7 @@ function Themes.apply(name, instant)
 			apply(inst, props)
 		end
 	end
+	drift, driftStart = preset.Drift, os.clock()
 	-- ClockTime wraps, so set directly
 	pcall(function()
 		Lighting.ClockTime = preset.ClockTime

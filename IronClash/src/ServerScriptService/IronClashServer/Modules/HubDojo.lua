@@ -3,7 +3,7 @@
 -- through a tunnel of vermilion gates, past a koi pond with an arched bridge and tea house, to the walled
 -- dojo compound (gatehouse, training yard, main hall, bell tower, storehouse, pagoda). Behind it terraces
 -- climb to a hilltop shrine up a lantern-lit stairway; farmhouses, bamboo and cherry trees fill the
--- flanks, petals drift through the whole district and a huge low sun sits on the horizon. Disciples jog the
+-- flanks, and petals drift through the whole district under the hub's dusk sky. Disciples jog the
 -- yard and walk the path, koi swim the pond (animated on every client by HubAmbient).
 -- Dojo coordinates: u = studs to the right of the centre line, v = studs out from the plaza centre.
 
@@ -504,7 +504,7 @@ function Dojo.build(ctx)
 	end
 
 	------------------------------------------------------------------------------------
-	-- flanks: farmhouses, cherry trees, bamboo, flowers; and the sunset itself
+	-- flanks: farmhouses, cherry trees, bamboo, flowers; petals and fireflies
 	------------------------------------------------------------------------------------
 	local taken = {}
 	local function free(u, v, r)
@@ -578,18 +578,6 @@ function Dojo.build(ctx)
 		local pv, owner = ctx.padAt(p.X, p.Z)
 		if math.abs(u) > 68 and (pv < 0.05 or owner == "dojo") and free(u, v, 3.5) then
 			ctx.bamboo(V(p.X, G, p.Z))
-		end
-	end
-	-- the sunset: a vast low sun and layered cloud ribbons over the far hills
-	do
-		local sunAt = d.at(0, G + 150, 560)
-		local look = CFrame.lookAt(sunAt, V(ctx.O.X, sunAt.Y, ctx.O.Z)) * CFrame.Angles(0, math.rad(90), 0)
-		Kit.cyl(nature, look, 6, 120, C(255, 150, 70), M.Neon, NS({ Transparency = 0.18 }))
-		Kit.cyl(nature, look * CFrame.new(0, 0, 0) * CFrame.new(-4, 0, 0), 6, 150, C(255, 110, 90), M.Neon, NS({ Transparency = 0.72 }))
-		for k = 0, 4 do
-			local p = d.at(rr(-130, 130), G + 118 + k * 16, 540 - k * 6)
-			local cf = CFrame.lookAt(p, V(ctx.O.X, p.Y, ctx.O.Z))
-			block(nature, cf, V(rr(70, 130), 3.2, 1.2), (k % 2 == 0) and C(255, 120, 100) or C(255, 176, 130), M.Neon, NS({ Transparency = 0.6 + k * 0.04 }))
 		end
 	end
 	-- petals drifting through the whole district, and fireflies by the pond

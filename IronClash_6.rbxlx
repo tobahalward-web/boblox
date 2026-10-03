@@ -4277,12 +4277,12 @@ gP+A/4D/gP+A/4D/gP+A/4D/gP+A/4D/gP+A/4D/gP+A/4D/gP+A/4D/gP+A/4D/gP8=]]></BinaryS
 			<Item class="Clouds" referent="RBX8C9D98D6452A448FA8343B08749DDBA9">
 				<Properties>
 					<Color3 name="Color">
-						<R>1</R>
-						<G>0.839215696</G>
-						<B>0.768627465</B>
+						<R>1.0</R>
+						<G>0.666666667</G>
+						<B>0.541176471</B>
 					</Color3>
-					<float name="Cover">0.550000012</float>
-					<float name="Density">0.400000006</float>
+					<float name="Cover">0.62</float>
+					<float name="Density">0.5</float>
 					<bool name="Enabled">true</bool>
 					<BinaryString name="AttributesSerialize"></BinaryString>
 					<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
@@ -7354,20 +7354,40 @@ Themes.Presets = {
 		Clouds = { Cover = 0.65, Density = 0.6, Color = C(80, 50, 44) },
 		Particles = "embers",
 	},
-	Hub = {
-		-- golden-hour plaza: warm sun, cool shadows, a little haze so the far scenery fades out
-		ClockTime = 17.4, Brightness = 2.1, GeographicLatitude = 30,
-		Ambient = C(118, 112, 124), OutdoorAmbient = C(160, 152, 168),
-		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.05,
-		ColorShift_Top = C(255, 222, 186), ColorShift_Bottom = C(80, 70, 110),
-		Atmosphere = { Density = 0.26, Offset = 0.12, Color = C(226, 200, 196), Decay = C(150, 120, 160), Glare = 0.2, Haze = 1.1 },
-		Bloom = { Intensity = 0.35, Size = 24, Threshold = 1.8 },
-		CC = { Brightness = 0.02, Contrast = 0.05, Saturation = 0.08, TintColor = C(255, 246, 238) },
-		SunRays = { Intensity = 0.06, Spread = 0.6 },
+	-- The hub's sky. Two looks, picked by Config.Hub.sky (Presets.Hub below points at the chosen one).
+	-- Lighting.Atmosphere: Color is the hue of the sky near the sun, Decay the hue away from it, and Haze + Glare
+	-- are what make the glow around the horizon visible. The sun drifts slowly (Drift) so the light keeps moving.
+	HubDusk = {
+		-- golden hour: a low sun, warm orange glow fading to dusty violet opposite it, pink under-lit clouds, long soft shadows
+		ClockTime = 17.55, Brightness = 2.3, GeographicLatitude = 30,
+		Ambient = C(108, 94, 122), OutdoorAmbient = C(156, 128, 146),
+		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.1,
+		ColorShift_Top = C(255, 186, 132), ColorShift_Bottom = C(96, 78, 140),
+		Atmosphere = { Density = 0.3, Offset = 0.18, Color = C(255, 170, 118), Decay = C(146, 84, 150), Glare = 0.9, Haze = 1.9 },
+		Bloom = { Intensity = 0.5, Size = 26, Threshold = 1.5 },
+		CC = { Brightness = 0.02, Contrast = 0.08, Saturation = 0.16, TintColor = C(255, 238, 230) },
+		SunRays = { Intensity = 0.14, Spread = 0.85 },
 		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
-		Sky = { StarCount = 400, CelestialBodiesShown = true, SunAngularSize = 16 },
-		Clouds = { Cover = 0.55, Density = 0.4, Color = C(255, 214, 196) },
+		Sky = { StarCount = 1400, CelestialBodiesShown = true, SunAngularSize = 22, MoonAngularSize = 12 },
+		Clouds = { Cover = 0.62, Density = 0.5, Color = C(255, 170, 138) },
 		Particles = "petals",
+		Drift = { base = 17.55, amp = 0.25, period = 600 }, -- ClockTime swings between 17.3 and 17.8 every ten minutes
+	},
+	HubDawn = {
+		-- first light: a pale peach glow melting into periwinkle, soft pink clouds, cool blue shadows
+		ClockTime = 6.45, Brightness = 2.0, GeographicLatitude = 30,
+		Ambient = C(112, 110, 136), OutdoorAmbient = C(150, 148, 176),
+		EnvironmentDiffuseScale = 0.9, EnvironmentSpecularScale = 0.6, ExposureCompensation = 0.05,
+		ColorShift_Top = C(255, 208, 170), ColorShift_Bottom = C(90, 96, 150),
+		Atmosphere = { Density = 0.3, Offset = 0.2, Color = C(255, 196, 160), Decay = C(118, 138, 205), Glare = 0.75, Haze = 1.7 },
+		Bloom = { Intensity = 0.4, Size = 26, Threshold = 1.6 },
+		CC = { Brightness = 0.02, Contrast = 0.06, Saturation = 0.12, TintColor = C(255, 244, 238) },
+		SunRays = { Intensity = 0.1, Spread = 0.8 },
+		DOF = { FarIntensity = 0.06, NearIntensity = 0, InFocusRadius = 60 },
+		Sky = { StarCount = 900, CelestialBodiesShown = true, SunAngularSize = 20, MoonAngularSize = 12 },
+		Clouds = { Cover = 0.6, Density = 0.45, Color = C(255, 208, 206) },
+		Particles = "petals",
+		Drift = { base = 6.45, amp = 0.25, period = 600 }, -- 6.2 to 6.7
 	},
 	Frozen = {
 		ClockTime = 10.5, Brightness = 1.8, GeographicLatitude = 50,
@@ -7384,6 +7404,15 @@ Themes.Presets = {
 		Particles = "snow",
 	},
 }
+
+-- the preset the hub uses (Themes.apply("Hub")): dusk unless Config.Hub.sky asks for dawn
+do
+	local ok, Config = pcall(function()
+		return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+	end)
+	local dawn = ok and Config.Hub and Config.Hub.sky == "dawn"
+	Themes.Presets.Hub = dawn and Themes.Presets.HubDawn or Themes.Presets.HubDusk
+end
 
 local function ensure(className, name, parent)
 	local inst = parent:FindFirstChild(name)
@@ -7472,6 +7501,18 @@ function Themes.followCamera(cf)
 end
 
 local current = nil
+-- the sun's slow drift while a preset has one (see Presets.HubDusk): eases ClockTime back and forth around its base
+local drift, driftStart = nil, 0
+task.spawn(function()
+	while true do
+		task.wait(0.25)
+		if drift then
+			pcall(function()
+				Lighting.ClockTime = drift.base + drift.amp * math.sin((os.clock() - driftStart) * 2 * math.pi / drift.period)
+			end)
+		end
+	end
+end)
 
 function Themes.apply(name, instant)
 	local preset = Themes.Presets[name] or Themes.Presets.Neon
@@ -7492,6 +7533,7 @@ function Themes.apply(name, instant)
 			apply(inst, props)
 		end
 	end
+	drift, driftStart = preset.Drift, os.clock()
 	-- ClockTime wraps, so set directly
 	pcall(function()
 		Lighting.ClockTime = preset.ClockTime
@@ -10246,6 +10288,7 @@ Config.Hub = {
 	walkSpeed = 16,
 	jumpPower = 46,
 	challengeTime = 15, -- seconds a hub challenge waits for an answer
+	sky = "dusk", -- the hub's sky: "dusk" (golden hour, sun setting) or "dawn" (pastel sunrise)
 }
 
 -- battle tower ---------------------------------------------------------
@@ -59604,7 +59647,7 @@ return Frozen
 -- through a tunnel of vermilion gates, past a koi pond with an arched bridge and tea house, to the walled
 -- dojo compound (gatehouse, training yard, main hall, bell tower, storehouse, pagoda). Behind it terraces
 -- climb to a hilltop shrine up a lantern-lit stairway; farmhouses, bamboo and cherry trees fill the
--- flanks, petals drift through the whole district and a huge low sun sits on the horizon. Disciples jog the
+-- flanks, and petals drift through the whole district under the hub's dusk sky. Disciples jog the
 -- yard and walk the path, koi swim the pond (animated on every client by HubAmbient).
 -- Dojo coordinates: u = studs to the right of the centre line, v = studs out from the plaza centre.
 
@@ -60105,7 +60148,7 @@ function Dojo.build(ctx)
 	end
 
 	------------------------------------------------------------------------------------
-	-- flanks: farmhouses, cherry trees, bamboo, flowers; and the sunset itself
+	-- flanks: farmhouses, cherry trees, bamboo, flowers; petals and fireflies
 	------------------------------------------------------------------------------------
 	local taken = {}
 	local function free(u, v, r)
@@ -60179,18 +60222,6 @@ function Dojo.build(ctx)
 		local pv, owner = ctx.padAt(p.X, p.Z)
 		if math.abs(u) > 68 and (pv < 0.05 or owner == "dojo") and free(u, v, 3.5) then
 			ctx.bamboo(V(p.X, G, p.Z))
-		end
-	end
-	-- the sunset: a vast low sun and layered cloud ribbons over the far hills
-	do
-		local sunAt = d.at(0, G + 150, 560)
-		local look = CFrame.lookAt(sunAt, V(ctx.O.X, sunAt.Y, ctx.O.Z)) * CFrame.Angles(0, math.rad(90), 0)
-		Kit.cyl(nature, look, 6, 120, C(255, 150, 70), M.Neon, NS({ Transparency = 0.18 }))
-		Kit.cyl(nature, look * CFrame.new(0, 0, 0) * CFrame.new(-4, 0, 0), 6, 150, C(255, 110, 90), M.Neon, NS({ Transparency = 0.72 }))
-		for k = 0, 4 do
-			local p = d.at(rr(-130, 130), G + 118 + k * 16, 540 - k * 6)
-			local cf = CFrame.lookAt(p, V(ctx.O.X, p.Y, ctx.O.Z))
-			block(nature, cf, V(rr(70, 130), 3.2, 1.2), (k % 2 == 0) and C(255, 120, 100) or C(255, 176, 130), M.Neon, NS({ Transparency = 0.6 + k * 0.04 }))
 		end
 	end
 	-- petals drifting through the whole district, and fireflies by the pond
@@ -75503,24 +75534,24 @@ aXF1ZUlkAgwAAABMZU96RVZCUExlT3o=]]></BinaryString>
 	<Item class="Lighting" referent="RBX00000002">
 		<Properties>
 			<Color3 name="Ambient">
-				<R>0.305900007</R>
-				<G>0.282400012</G>
-				<B>0.384299994</B>
+				<R>0.423529412</R>
+				<G>0.368627451</G>
+				<B>0.478431373</B>
 			</Color3>
-			<float name="Brightness">1.20000005</float>
+			<float name="Brightness">2.3</float>
 			<Color3 name="ColorShift_Bottom">
-				<R>0.313725501</R>
-				<G>0.274509817</G>
-				<B>0.431372553</B>
+				<R>0.376470588</R>
+				<G>0.305882353</G>
+				<B>0.549019608</B>
 			</Color3>
 			<Color3 name="ColorShift_Top">
-				<R>1</R>
-				<G>0.870588243</G>
-				<B>0.729411781</B>
+				<R>1.0</R>
+				<G>0.729411765</G>
+				<B>0.517647059</B>
 			</Color3>
-			<float name="EnvironmentDiffuseScale">0.899999976</float>
-			<float name="EnvironmentSpecularScale">0.600000024</float>
-			<float name="ExposureCompensation">0</float>
+			<float name="EnvironmentDiffuseScale">0.9</float>
+			<float name="EnvironmentSpecularScale">0.6</float>
+			<float name="ExposureCompensation">0.1</float>
 			<token name="ExtendLightRangeTo120">0</token>
 			<Color3 name="FogColor">
 				<R>0.75</R>
@@ -75533,15 +75564,15 @@ aXF1ZUlkAgwAAABMZU96RVZCUExlT3o=]]></BinaryString>
 			<bool name="GlobalShadows">true</bool>
 			<token name="LightingStyle">0</token>
 			<Color3 name="OutdoorAmbient">
-				<R>0.439200014</R>
-				<G>0.407799989</G>
-				<B>0.549000025</B>
+				<R>0.611764706</R>
+				<G>0.501960784</G>
+				<B>0.57254902</B>
 			</Color3>
 			<bool name="Outlines">true</bool>
 			<bool name="PrioritizeLightingQuality">true</bool>
 			<float name="ShadowSoftness">0.5</float>
 			<token name="Technology">4</token>
-			<string name="TimeOfDay">00:18:00</string>
+			<string name="TimeOfDay">17:33:00</string>
 			<BinaryString name="AttributesSerialize"><![CDATA[AwAAACYAAABSQlhfTGlnaHRpbmdUZWNobm9sb2d5VW5pZmllZE1pZ3JhdGlvbgMBIAAAAFJC
 WF9PcmlnaW5hbFRlY2hub2xvZ3lPbkZpbGVMb2FkBAQAAAARAAAAX2xlbW9uYWRlVW5pcXVl
 SWQCAwAAAGxpdA==]]></BinaryString>
@@ -75556,7 +75587,7 @@ SWQCAwAAAGxpdA==]]></BinaryString>
 		<Item class="Sky" referent="RBX00000003">
 			<Properties>
 				<bool name="CelestialBodiesShown">true</bool>
-				<float name="MoonAngularSize">11</float>
+				<float name="MoonAngularSize">12</float>
 				<Content name="MoonTextureId"><url>rbxasset://sky/moon.jpg</url></Content>
 				<Content name="SkyboxBk"><url>rbxasset://textures/sky/sky512_bk.tex</url></Content>
 				<Content name="SkyboxDn"><url>rbxasset://textures/sky/sky512_dn.tex</url></Content>
@@ -75569,8 +75600,8 @@ SWQCAwAAAGxpdA==]]></BinaryString>
 				</Vector3>
 				<Content name="SkyboxRt"><url>rbxasset://textures/sky/sky512_rt.tex</url></Content>
 				<Content name="SkyboxUp"><url>rbxasset://textures/sky/sky512_up.tex</url></Content>
-				<int name="StarCount">400</int>
-				<float name="SunAngularSize">16</float>
+				<int name="StarCount">1400</int>
+				<float name="SunAngularSize">22</float>
 				<Content name="SunTextureId"><url>rbxasset://sky/sun.jpg</url></Content>
 				<BinaryString name="AttributesSerialize">AQAAABEAAABfbGVtb25hZGVVbmlxdWVJZAIMAAAAeEJmZ2tuc0t4QmZn</BinaryString>
 				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
@@ -75585,19 +75616,19 @@ SWQCAwAAAGxpdA==]]></BinaryString>
 		<Item class="Atmosphere" referent="RBX00000004">
 			<Properties>
 				<Color3 name="Color">
-					<R>0.886274517</R>
-					<G>0.784313738</G>
-					<B>0.768627465</B>
+					<R>1.0</R>
+					<G>0.666666667</G>
+					<B>0.462745098</B>
 				</Color3>
 				<Color3 name="Decay">
-					<R>0.588235319</R>
-					<G>0.470588237</G>
-					<B>0.627451003</B>
+					<R>0.57254902</R>
+					<G>0.329411765</G>
+					<B>0.588235294</B>
 				</Color3>
-				<float name="Density">0.25999999</float>
-				<float name="Glare">0.200000003</float>
-				<float name="Haze">1.10000002</float>
-				<float name="Offset">0.119999997</float>
+				<float name="Density">0.3</float>
+				<float name="Glare">0.9</float>
+				<float name="Haze">1.9</float>
+				<float name="Offset">0.18</float>
 				<BinaryString name="AttributesSerialize">AQAAABEAAABfbGVtb25hZGVVbmlxdWVJZAIMAAAAdVM5d1NwQ091Uzl3</BinaryString>
 				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
 				<bool name="DefinesCapabilities">false</bool>
@@ -75610,9 +75641,9 @@ SWQCAwAAAGxpdA==]]></BinaryString>
 		</Item>
 		<Item class="BloomEffect" referent="RBX00000005">
 			<Properties>
-				<float name="Intensity">0.349999994</float>
-				<float name="Size">24</float>
-				<float name="Threshold">1.79999995</float>
+				<float name="Intensity">0.5</float>
+				<float name="Size">26</float>
+				<float name="Threshold">1.5</float>
 				<bool name="Enabled">true</bool>
 				<BinaryString name="AttributesSerialize">AQAAABEAAABfbGVtb25hZGVVbmlxdWVJZAIMAAAAU2d1ZG9MOVhTZ3Vk</BinaryString>
 				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
@@ -75626,13 +75657,13 @@ SWQCAwAAAGxpdA==]]></BinaryString>
 		</Item>
 		<Item class="ColorCorrectionEffect" referent="RBX00000006">
 			<Properties>
-				<float name="Brightness">0.0199999996</float>
-				<float name="Contrast">0.0500000007</float>
-				<float name="Saturation">0.0799999982</float>
+				<float name="Brightness">0.02</float>
+				<float name="Contrast">0.08</float>
+				<float name="Saturation">0.16</float>
 				<Color3 name="TintColor">
-					<R>1</R>
-					<G>0.964705884</G>
-					<B>0.933333337</B>
+					<R>1.0</R>
+					<G>0.933333333</G>
+					<B>0.901960784</B>
 				</Color3>
 				<bool name="Enabled">true</bool>
 				<BinaryString name="AttributesSerialize">AQAAABEAAABfbGVtb25hZGVVbmlxdWVJZAIMAAAARE54NUFiVzRETng1</BinaryString>
@@ -75647,8 +75678,8 @@ SWQCAwAAAGxpdA==]]></BinaryString>
 		</Item>
 		<Item class="SunRaysEffect" referent="RBX00000007">
 			<Properties>
-				<float name="Intensity">0.0599999987</float>
-				<float name="Spread">0.600000024</float>
+				<float name="Intensity">0.14</float>
+				<float name="Spread">0.85</float>
 				<bool name="Enabled">true</bool>
 				<BinaryString name="AttributesSerialize">AQAAABEAAABfbGVtb25hZGVVbmlxdWVJZAIMAAAAczZmTkJiNHNzNmZO</BinaryString>
 				<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>

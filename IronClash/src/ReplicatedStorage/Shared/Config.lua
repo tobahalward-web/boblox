@@ -80,6 +80,7 @@ Config.Hub = {
 	walkSpeed = 16,
 	jumpPower = 46,
 	challengeTime = 15, -- seconds a hub challenge waits for an answer
+	sky = "dusk", -- the hub's sky: "dusk" (golden hour, sun setting) or "dawn" (pastel sunrise)
 }
 
 -- battle tower ---------------------------------------------------------

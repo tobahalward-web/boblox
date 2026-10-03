@@ -48,9 +48,12 @@ script sources in `IronClash/src` by `tools/build.py`, starting from `IronClash_
   and floating lanterns.
 - **Sunset Dojo**: great torii and a tunnel of gates, koi pond with a taiko bridge and tea house, the walled dojo
   compound (gatehouse, training yard, main hall, bell tower, storehouse), terraces and a stairway up to a hilltop
-  pagoda and shrine, farmhouses, cherry trees, bamboo and a low sun; disciples, villagers and swimming koi.
+  pagoda and shrine, farmhouses, cherry trees, bamboo and drifting petals; disciples, villagers and swimming koi.
 - Everything a district builds is scenery behind the plaza wall. People, carts, skaters and koi live under each district's
   `Movers` model and are moved on every client by `HubAmbient` along the paths stored in their attributes.
+- **Hub sky**: a golden-hour dusk by default (`Themes.Presets.HubDusk`: low sun, warm orange glow fading to dusty violet,
+  pink under-lit clouds, bloom and sun rays) with a pastel dawn alternative (`HubDawn`). Set `Config.Hub.sky = "dawn"`
+  to switch. The sun drifts slowly, so the light and shadows keep moving. The place file's saved lighting is the dusk look too.
 - `HubOutskirts` levels the terrain under every district, keeps the generic scatter props off them, and builds the rest
   of the land (hills, spires, pines) around them.
 
