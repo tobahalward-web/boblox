@@ -8,6 +8,8 @@ return function(root, only)
 		local sh = "Block"
 		if d.ClassName == "WedgePart" then
 			sh = "Wedge"
+		elseif d.ClassName == "CornerWedgePart" then
+			sh = "CornerWedge"
 		else
 			local s = d.Shape
 			if s and s.Name then sh = s.Name end

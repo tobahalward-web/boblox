@@ -258,6 +258,8 @@ local function valueType(name)
 end
 shim.UDim2 = valueType("UDim2")
 shim.UDim = valueType("UDim")
+shim.UDim2.fromScale = function(x, y) return shim.UDim2.new(x, 0, y, 0) end
+shim.UDim2.fromOffset = function(x, y) return shim.UDim2.new(0, x, 0, y) end
 shim.NumberRange = valueType("NumberRange")
 shim.NumberSequence = valueType("NumberSequence")
 shim.NumberSequenceKeypoint = valueType("NumberSequenceKeypoint")
@@ -392,6 +394,7 @@ local CLASSES = {
 	Atmosphere = { props = { "Density", "Offset", "Color", "Decay", "Glare", "Haze" } },
 	Humanoid = { props = { "RigType", "HipHeight", "DisplayName", "AutomaticScalingEnabled", "EvaluateStateMachine", "WalkSpeed", "Health", "MaxHealth", "JumpPower", "AutoRotate", "RequiresNeck", "BreakJointsOnDeath", "NameDisplayDistance", "HealthDisplayType", "DisplayDistanceType", "PlatformStand", "Sit", "UseJumpPower" } },
 	Highlight = { props = { "FillColor", "OutlineColor", "FillTransparency", "OutlineTransparency", "Adornee", "DepthMode", "Enabled" } },
+	ProximityPrompt = { props = { "ActionText", "ObjectText", "KeyboardKeyCode", "GamepadKeyCode", "HoldDuration", "MaxActivationDistance", "RequiresLineOfSight", "Enabled" } },
 	BoolValue = { props = { "Value" } },
 	ObjectValue = { props = { "Value" } },
 	StringValue = { props = { "Value" } },
@@ -425,7 +428,7 @@ Inst.__index = function(t, k)
 		for _, p in ipairs(def.props) do if p == k then return nil end end
 	end
 	for _, p in ipairs(COMMON) do if p == k then return nil end end
-	if k == "Touched" or k == "ChildAdded" or k == "AncestryChanged" or k == "Changed" or k == "DescendantAdded" or k == "Destroying" then
+	if k == "Touched" or k == "Triggered" or k == "ChildAdded" or k == "AncestryChanged" or k == "Changed" or k == "DescendantAdded" or k == "Destroying" then
 		return { Connect = function() return { Disconnect = function() end } end }
 	end
 	error(string.format("%s is not a valid member of %s", tostring(k), cls), 2)

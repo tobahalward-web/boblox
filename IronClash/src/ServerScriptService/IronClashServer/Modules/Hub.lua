@@ -17,7 +17,7 @@ local Kit = require(script.Parent:WaitForChild("ArenaKit"))
 
 local Hub = {}
 Hub.onPrompt = nil -- function(kind, player)
-Hub.VERSION = 1
+Hub.VERSION = 2
 
 local C, M, V = Kit.C, Kit.M, Kit.V
 local O = Config.Hub.origin

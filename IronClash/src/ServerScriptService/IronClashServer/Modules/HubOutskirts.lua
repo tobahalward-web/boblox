@@ -12,6 +12,9 @@
 local Kit = require(script.Parent:WaitForChild("ArenaKit"))
 local City = require(script.Parent:WaitForChild("HubCity")) -- the Neon City district (street grid, buildings, traffic)
 local Wilds = require(script.Parent:WaitForChild("HubWilds")) -- second pass filling the open ground
+local Volcano = require(script.Parent:WaitForChild("HubVolcano")) -- the Volcano Forge district (foundries, furnaces, rails)
+local Frozen = require(script.Parent:WaitForChild("HubFrozen")) -- the Frozen Temple district (temple, lake, shrines)
+local Dojo = require(script.Parent:WaitForChild("HubDojo")) -- the Sunset Dojo district (dojo hall, torii avenue, terraces)
 local C, M, V = Kit.C, Kit.M, Kit.V
 local block, vcyl, ball, ell, bar, rod = Kit.block, Kit.vcyl, Kit.ball, Kit.ell, Kit.bar, Kit.rod
 local smoothstep = Kit.smoothstep
@@ -21,6 +24,8 @@ local Out = {}
 local THEMES = { "city", "volcano", "frozen", "dojo" }
 -- direction of each region (angle around the plaza: 0 = +X / east, pi/2 = +Z / south)
 local CENTER = { city = -math.pi / 2, volcano = 0, frozen = math.pi / 2, dojo = math.pi }
+-- each region's built-up district sits on levelled ground (pad(O, x, z) = 0..1 how much of a point it owns)
+local DISTRICTS = { city = City, volcano = Volcano, frozen = Frozen, dojo = Dojo }
 
 function Out.build(parent, O, rim)
 	local model = Kit.model(parent, "Outskirts")
@@ -66,10 +71,13 @@ function Out.build(parent, O, rim)
 	-- landmarks
 	local VOLC = polar(-20, 450) -- volcano cone (off to the side, so the Battle Tower doesn't hide it)
 	local GLAC = polar(96, 450) -- glacier peak
-	local POND = polar(196, 128) -- koi pond
-	local LAKE = polar(112, 150) -- frozen lake
-	local LAVA = polar(12, 120) -- lava pool
-	local FPOND = polar(136, 138) -- frozen pond where the snow meets the blossom
+	-- a point given in a district's own (u, v) coordinates
+	local function inDistrict(spec, u, v)
+		local ca, sa = math.cos(spec.angle), math.sin(spec.angle)
+		return V(O.X + ca * v - sa * u, 0, O.Z + sa * v + ca * u)
+	end
+	local POND = inDistrict(Dojo.SPEC, Dojo.POND.u, Dojo.POND.v) -- koi pond (in the Sunset Dojo)
+	local LAKE = inDistrict(Frozen.SPEC, Frozen.LAKE.u, Frozen.LAKE.v) -- frozen lake (in the Frozen Temple)
 
 	local function hCity(x, z, r)
 		return smoothstep(340, 480, r) * (ridge(x, z, 0.008, 1.1) ^ 2 * 85 + 12)
@@ -110,8 +118,20 @@ function Out.build(parent, O, rim)
 	local HEIGHT = { city = hCity, volcano = hVolcano, frozen = hFrozen, dojo = hDojo }
 
 	-- dished-out features: { centre, radius, depth }
-	local DISHES = { { POND, 17, 3 }, { LAKE, 30, 0.6 }, { LAVA, 22, 1.4 }, { FPOND, 14, 0.6 } }
-	local DISH_MAT = { M.Mud, M.Ice, M.CrackedLava, M.Ice }
+	local DISHES = { { POND, Dojo.POND.r, 3 }, { LAKE, Frozen.LAKE.r, 0.6 } }
+	local DISH_MAT = { M.Mud, M.Ice }
+
+	-- the strongest district pad at (x, z) and which district owns it
+	local function padAt(x, z)
+		local best, who = 0, nil
+		for _, t in ipairs(THEMES) do
+			local p = DISTRICTS[t].pad(O, x, z)
+			if p > best then
+				best, who = p, t
+			end
+		end
+		return best, who
+	end
 
 	-- terrain height above G at (x, z), plus the region weights there
 	local function heightAt(x, z, w)
@@ -124,7 +144,7 @@ function Out.build(parent, O, rim)
 				h = h + w[t] * HEIGHT[t](x, z, r)
 			end
 		end
-		h = h * (1 - City.pad(O, x, z)) -- the city's street grid sits on levelled ground
+		h = h * (1 - (padAt(x, z))) -- the districts' streets and plinths sit on levelled ground
 		h = h * smoothstep(rim + 4, rim + 26, r) -- dead flat right outside the plaza wall
 		for _, d in ipairs(DISHES) do
 			local ex, ez = x - d[1].X, z - d[1].Z
@@ -251,8 +271,9 @@ function Out.build(parent, O, rim)
 								ts2[i][k] = dish
 							else
 								local u = math.clamp(n01(wx, wz, 0.05, 12.3) * 0.7 + n01(wx, wz, 0.17, 3.1) * 0.3, 0, 0.999)
-								if City.pad(O, wx, wz) > 0.35 + u * 0.3 then
-									ts[i][k], ts2[i][k] = "city", "city"
+								local pv, owner = padAt(wx, wz)
+								if pv > 0.35 + u * 0.3 then
+									ts[i][k], ts2[i][k] = owner, owner
 								else
 									ts[i][k] = pickTheme(w, u)
 									ts2[i][k] = pickTheme(snowyWeights(w), u)
@@ -317,23 +338,26 @@ function Out.build(parent, O, rim)
 	local function cellKey(cx, cz)
 		return cx * 65536 + cz
 	end
-	local function claim(p, r)
+	-- force = record the circle even where it overlaps others (used to reserve a whole footprint)
+	local function claim(p, r, force)
 		local px, pz = p.X, p.Z
-		for _, t in ipairs(bigList) do
-			local dx, dz, rr = px - t[1], pz - t[2], r + t[3]
-			if dx * dx + dz * dz < rr * rr then
-				return false
+		if not force then
+			for _, t in ipairs(bigList) do
+				local dx, dz, rr = px - t[1], pz - t[2], r + t[3]
+				if dx * dx + dz * dz < rr * rr then
+					return false
+				end
 			end
-		end
-		local reach = r + BIG
-		for cx = math.floor((px - reach) / CELL), math.floor((px + reach) / CELL) do
-			for cz = math.floor((pz - reach) / CELL), math.floor((pz + reach) / CELL) do
-				local list = cells[cellKey(cx, cz)]
-				if list then
-					for _, t in ipairs(list) do
-						local dx, dz, rr = px - t[1], pz - t[2], r + t[3]
-						if dx * dx + dz * dz < rr * rr then
-							return false
+			local reach = r + BIG
+			for cx = math.floor((px - reach) / CELL), math.floor((px + reach) / CELL) do
+				for cz = math.floor((pz - reach) / CELL), math.floor((pz + reach) / CELL) do
+					local list = cells[cellKey(cx, cz)]
+					if list then
+						for _, t in ipairs(list) do
+							local dx, dz, rr = px - t[1], pz - t[2], r + t[3]
+							if dx * dx + dz * dz < rr * rr then
+								return false
+							end
 						end
 					end
 				end
@@ -389,8 +413,11 @@ function Out.build(parent, O, rim)
 			if ok and opts.maxHeight and h > opts.maxHeight then
 				ok = false
 			end
-			if ok and theme ~= "city" and City.pad(O, x, z) > 0.12 then
-				ok = false -- keep the wild regions off the city's streets
+			if ok then
+				local pv, owner = padAt(x, z)
+				if pv > 0.12 and not (theme == "city" and owner == "city") then
+					ok = false -- keep the scatter off the districts' streets and plinths
+				end
 			end
 			if ok and not dishAt(x, z, spacing + 2) and claim(V(x, 0, z), spacing) then
 				placed = placed + 1
@@ -626,24 +653,14 @@ function Out.build(parent, O, rim)
 	end
 
 	local function buildVolcano()
-		-- the lava pool by the plaza, fed by rivers running down from the volcano
-		local ly = G - 0.65
-		vcyl(model, V(LAVA.X, ly, LAVA.Z), 0.3, 44, C(255, 110, 28), M.Neon, { CastShadow = false })
-		for k = 1, 9 do
-			local a, r = rng:NextNumber(0, math.pi * 2), rng:NextNumber(4, 16)
-			local w, d = rng:NextNumber(4, 9), rng:NextNumber(4, 9)
-			local cf = CFrame.new(LAVA.X + math.cos(a) * r, ly + 0.15 + k * 0.01, LAVA.Z + math.sin(a) * r) * CFrame.Angles(0, rng:NextNumber(0, 3), 0)
-			block(model, cf, V(w, 0.5, d), C(40, 32, 30), M.CrackedLava, { CastShadow = false }) -- cooled crust plates
-			block(model, cf * CFrame.new(0, 0.02, 0) * CFrame.Angles(0, math.rad(45), 0), V(w * 0.75, 0.5, d * 0.75), C(46, 36, 32), M.CrackedLava, { CastShadow = false })
-		end
-		local glow = Kit.anchor(model, V(LAVA.X, G + 4, LAVA.Z), V(30, 1, 30))
-		Kit.light(glow, C(255, 120, 50), 50, 2)
-		Kit.embers(glow, C(255, 200, 90), C(255, 70, 20), 14, 5)
+		-- rivers running down from the cone's foot into the Volcano Forge's canals
 		local slope = VOLC + (O - VOLC).Unit * 150
 		local side = V(-(O - VOLC).Unit.Z, 0, (O - VOLC).Unit.X)
 		afterTerrain[#afterTerrain + 1] = function()
-			lavaRiver(V(slope.X, 0, slope.Z) + side * 40, LAVA + side * 6, 4.5, 10, 0.5)
-			lavaRiver(V(slope.X, 0, slope.Z) - side * 34, LAVA - side * 6, 3.6, 14, 2.1)
+			for k, sgn in ipairs({ -1, 1 }) do
+				local head = V(O.X + Volcano.CANAL_V1, 0, O.Z + sgn * Volcano.CANAL_U)
+				lavaRiver(V(slope.X, 0, slope.Z) + side * (sgn * 36), head, 4.5 - k * 0.4, 10, 0.5 + k * 1.6)
+			end
 		end
 		-- the crater: lava lake, glow, smoke plume and embers
 		local cy = groundY(VOLC.X, VOLC.Z) + 20 -- lava level inside the bowl
@@ -757,23 +774,7 @@ function Out.build(parent, O, rim)
 	end
 
 	local function buildFrozen()
-		-- frozen lake ringed by crystals, with a ruined colonnade on its shore
-		for k = 1, 7 do
-			local a = k / 7 * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
-			local p = LAKE + V(math.cos(a) * 33, 0, math.sin(a) * 33)
-			claim(p, 5)
-			crystals(V(p.X, groundY(p.X, p.Z), p.Z), rng:NextNumber(0.7, 1.2), rng:NextInteger(3, 5), (k % 2 == 0) and C(150, 214, 255) or C(176, 150, 255), false)
-		end
-		local toO = (O - LAKE).Unit
-		for k = -3, 3 do
-			local a = math.atan2(toO.Z, toO.X) + math.pi + k * 0.2
-			local p = LAKE + V(math.cos(a) * 44, 0, math.sin(a) * 44)
-			if claim(p, 3) then
-				brokenColumn(V(p.X, groundY(p.X, p.Z), p.Z), (k % 3 == 0) and 14 or rng:NextNumber(4, 10))
-			end
-		end
-		local snowA = Kit.anchor(model, V(LAKE.X, G + 30, LAKE.Z), V(120, 1, 120))
-		Kit.fall(snowA, C(255, 255, 255), 30, 0.25, 0.6)
+		-- (the Frozen Temple district builds the lake, the temple and its grounds)
 		-- pines (pink-tipped where the cherry grove is near) and glowing crystal clusters
 		scatter("frozen", 26, 92, 300, 7, function(p, w)
 			if w.volcano > 0.3 then
@@ -908,48 +909,7 @@ function Out.build(parent, O, rim)
 	end
 
 	local function buildDojo()
-		-- koi pond: stone rim, lily pads, lanterns
-		claim(POND, 20)
-		for k = 1, 16 do
-			local a = k / 16 * math.pi * 2 + rng:NextNumber(-0.08, 0.08)
-			local d = rng:NextNumber(2.2, 3.4)
-			local x, z = POND.X + math.cos(a) * 17.5, POND.Z + math.sin(a) * 17.5
-			Kit.rock(model, V(x, groundY(x, z) + 0.15, z), V(d * 1.3, d * 0.7, d), C(100 + rng:NextInteger(0, 30), 98 + rng:NextInteger(0, 26), 92 + rng:NextInteger(0, 20)), M.Slate, rng, { CastShadow = false })
-		end
-		-- the water is a glassy disc (its edge disappears under the bank), with koi under it
-		local wy = G - 1.2
-		vcyl(model, V(POND.X, wy, POND.Z), 0.3, 42, C(52, 112, 128), M.Glass, { CastShadow = false, Transparency = 0.28, Reflectance = 0.12 })
-		for _ = 1, 9 do
-			vcyl(model, V(POND.X + rng:NextNumber(-10, 10), wy + 0.18, POND.Z + rng:NextNumber(-10, 10)), 0.06, rng:NextNumber(1.1, 1.8), C(74, 130, 62), M.Grass, { CastShadow = false })
-		end
-		for k = 1, 6 do
-			local a = rng:NextNumber(0, math.pi * 2)
-			local p = POND + V(math.cos(a), 0, math.sin(a)) * rng:NextNumber(2, 10)
-			local koi = (k % 3 == 0) and C(250, 246, 240) or C(255, 120 + rng:NextInteger(0, 40), 40)
-			ell(model, CFrame.new(p.X, wy - 0.9, p.Z) * CFrame.Angles(0, rng:NextNumber(0, 6.3), 0), V(0.7, 0.4, 2), koi, M.SmoothPlastic, { CastShadow = false })
-		end
-		for _, sx in ipairs({ -1, 1 }) do
-			local p = POND + V(sx * 22, 0, -sx * 6)
-			Kit.light(toro(V(p.X, groundY(p.X, p.Z), p.Z), 1.1, false), C(255, 180, 110), 16, 0.9)
-		end
-		-- a path of torii leading west from the plaza, a pagoda on the hill beyond
-		for i = 0, 2 do
-			local p = polar(180 + (i - 1) * 2, 110 + i * 26)
-			if claim(p, 9) then
-				torii(V(p.X, groundY(p.X, p.Z), p.Z), (O - p) * V(1, 0, 1), nil)
-			end
-		end
-		local pg = polar(184, 290)
-		claim(pg, 18)
-		pagoda(V(pg.X, groundY(pg.X, pg.Z) - 1, pg.Z))
-		-- big blossoms just over the plaza wall, so the grove frames the Practice Dojo
-		for i = 0, 9 do
-			local p = polar(140 + i * 9 + rng:NextNumber(-3, 3), rng:NextNumber(90, 100))
-			local w = weights(p.X, p.Z)
-			if w.dojo > 0.4 and claim(p, 7) then
-				cherry(V(p.X, groundY(p.X, p.Z), p.Z), rng:NextNumber(1.6, 2.0), w.frozen > 0.2)
-			end
-		end
+		-- (the Sunset Dojo district builds the pond, the dojo grounds, the torii avenue and the pagoda)
 		scatter("dojo", 30, 100, 300, 8, function(p, w)
 			cherry(p, rng:NextNumber(1.1, 1.7), w.frozen > 0.2)
 		end)
@@ -971,12 +931,9 @@ function Out.build(parent, O, rim)
 		-- city / volcano (north-east): a molten district just outside the street grid, towers split by lava
 		for i = 1, 4 do
 			local p = polar(-35 + rng:NextNumber(-6, 6), rng:NextNumber(130, 210))
-			if City.pad(O, p.X, p.Z) < 0.05 and claim(p, 15) then
+			if padAt(p.X, p.Z) < 0.05 and claim(p, 15) then
 				tower(V(p.X, groundY(p.X, p.Z) - 1, p.Z), rng:NextNumber(16, 24), rng:NextNumber(16, 24), rng:NextNumber(60, 140), false, true)
 			end
-		end
-		afterTerrain[#afterTerrain + 1] = function()
-			lavaRiver(polar(-24, 118), polar(-42, 196), 3, 8, 1.2)
 		end
 		-- volcano / frozen (south-east): steam vents where lava meets ice
 		for i = 1, 3 do
@@ -994,40 +951,7 @@ function Out.build(parent, O, rim)
 				Kit.light(vent, C(255, 140, 70), 24, 1.2)
 			end
 		end
-		-- frozen / dojo (south-west): cherry trees in the snow around a frozen pond
-		claim(FPOND, 16)
-		for k = 1, 6 do
-			local a = k / 6 * math.pi * 2 + rng:NextNumber(-0.25, 0.25)
-			local p = FPOND + V(math.cos(a) * 20, 0, math.sin(a) * 20)
-			if claim(p, 6) then
-				cherry(V(p.X, groundY(p.X, p.Z), p.Z), rng:NextNumber(1.0, 1.4), true)
-			end
-		end
-		for _, sx in ipairs({ -1, 1 }) do
-			local p = FPOND + V(sx * 15, 0, sx * 9)
-			Kit.light(toro(V(p.X, groundY(p.X, p.Z), p.Z), 1, true), C(255, 190, 120), 14, 0.8)
-		end
-		-- dojo / city (north-west): a neon-lit torii arcade with shop signs
-		local dirNW = (polar(-135, 100) - polar(-135, 160)) * V(1, 0, 1)
-		for i = 0, 3 do
-			local p = polar(-135, 104 + i * 15)
-			if claim(p, 6) then
-				torii(V(p.X, groundY(p.X, p.Z), p.Z), dirNW, (i % 2 == 0) and C(80, 220, 255) or C(255, 80, 200))
-			end
-		end
-		for _, sx in ipairs({ -1, 1 }) do
-			for i = 0, 2 do
-				local base = polar(-135 + sx * 7, 112 + i * 18)
-				local gp = V(base.X, groundY(base.X, base.Z), base.Z)
-				vcyl(model, gp + V(0, 3.5, 0), 7, 0.3, C(40, 42, 50), M.Metal, { CastShadow = false })
-				local col = (i % 2 == 0) and C(255, 80, 200) or C(80, 220, 255)
-				Kit.sign(model, facing(gp + V(0, 6.2, 0), gp + dirNW * 0 + (O - gp) * V(1, 0, 1)), V(4, 1.4, 0.2), ({ "OPEN", "DOJO", "RAMEN" })[i + 1], col, C(10, 10, 16), col)
-				local lan = ell(model, CFrame.new(gp + V(0, 4.2, 0)), V(1.3, 1.7, 1.3), C(230, 60, 40), M.Neon, { CastShadow = false })
-				if i == 1 then
-					Kit.light(lan, C(255, 150, 90), 16, 1)
-				end
-			end
-		end
+		-- (dojo / city, north-west: the Sunset Dojo's torii avenue and the Neon City's skyline meet here)
 	end
 
 	------------------------------------------------------------------------------------
@@ -1036,16 +960,55 @@ function Out.build(parent, O, rim)
 		parent = model, O = O, G = G, rim = rim,
 		groundY = groundY, heightAt = heightAt, weights = weights, polar = polar, facing = facing,
 		claim = claim, scatter = scatter, surfaceY = surfaceY, flowSegment = flowSegment, afterTerrain = afterTerrain,
-		landmarks = { VOLC = VOLC, GLAC = GLAC, POND = POND, LAKE = LAKE, LAVA = LAVA, FPOND = FPOND },
+		landmarks = { VOLC = VOLC, GLAC = GLAC, POND = POND, LAKE = LAKE },
 		pine = pine, cherry = cherry, crystals = crystals, toro = toro, torii = torii, charredPine = charredPine,
 		rockColor = rockColor, bamboo = bamboo,
 		cityPad = function(x, z)
-			return City.pad(O, x, z)
+			return (padAt(x, z))
 		end,
+		padAt = padAt,
 	}
+	-- build a district; the trees and rocks it plants through the shared helpers (which parent them to the
+	-- outskirts model) are gathered under the district's own "Trees" model
+	local function buildDistrict(mod)
+		local before = {}
+		for _, c in ipairs(model:GetChildren()) do
+			before[c] = true
+		end
+		local root = mod.build(ctx)
+		if root then
+			local trees = Kit.model(root, "Trees")
+			for _, c in ipairs(model:GetChildren()) do
+				if not before[c] and c ~= root then
+					c.Parent = trees
+				end
+			end
+		end
+	end
+	-- keep the generic props off the three districts' footprints (their own modules dress them)
+	local function reserve(spec)
+		local ca, sa = math.cos(spec.angle), math.sin(spec.angle)
+		for v = spec.v0 - 10, spec.v1 + 10, 18 do
+			for u = -spec.halfW - 10, spec.halfW + 10, 18 do
+				claim(V(O.X + ca * v - sa * u, 0, O.Z + sa * v + ca * u), 12, true)
+			end
+		end
+	end
+	reserve(Volcano.SPEC)
+	reserve(Frozen.SPEC)
+	reserve(Dojo.SPEC)
 	for _, step in ipairs({
 		{ "neon city", function()
 			City.build(ctx)
+		end },
+		{ "volcano forge", function()
+			buildDistrict(Volcano)
+		end },
+		{ "frozen temple", function()
+			buildDistrict(Frozen)
+		end },
+		{ "sunset dojo", function()
+			buildDistrict(Dojo)
 		end },
 		{ "corners", buildCorners }, { "city skyline", buildCity }, { "volcano", buildVolcano }, { "frozen", buildFrozen }, { "dojo", buildDojo },
 		{ "wilds", function()

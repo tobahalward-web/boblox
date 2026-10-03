@@ -1,7 +1,8 @@
 -- IRON CLASH :: hub ambience (client)
--- Brings the Neon City's streets to life: the cars and pedestrians the server built under
--- Hub.Outskirts.NeonCity.Movers are moved along the paths stored in their attributes, every frame,
--- locally on each client (nothing is replicated). Pedestrians swing their arms and legs as they walk.
+-- Brings the hub's districts to life: the cars, carts, skaters, koi and pedestrians the server built under
+-- Hub.Outskirts.<District>.Movers (NeonCity, VolcanoForge, FrozenTemple, SunsetDojo) are moved along the
+-- paths stored in their attributes, every frame, locally on each client (nothing is replicated).
+-- Pedestrians ("walker") swing their arms and legs as they walk; everything else glides rigidly.
 -- Only runs while the camera is near the hub.
 
 local RunService = game:GetService("RunService")
@@ -16,8 +17,10 @@ local RANGE = 1200 -- studs from the hub centre
 local STRIDE = 2.2 -- studs per step
 local SWING = math.rad(32)
 
+local DISTRICTS = { "NeonCity", "VolcanoForge", "FrozenTemple", "SunsetDojo" }
+
 local entries = {}
-local folder = nil
+local folders = {}
 local parts, cfs = {}, {}
 
 local function setup(m)
@@ -54,23 +57,40 @@ end
 
 local function scan()
 	entries = {}
-	folder = nil
+	folders = {}
 	local hub = workspace:FindFirstChild("Hub")
 	local out = hub and hub:FindFirstChild("Outskirts")
-	local city = out and out:FindFirstChild("NeonCity")
-	local movers = city and city:FindFirstChild("Movers")
-	if not movers then
+	if not out then
 		return
 	end
-	folder = movers
-	for _, m in ipairs(movers:GetChildren()) do
-		if m:IsA("Model") then
-			local ok, e = pcall(setup, m)
-			if ok and e then
-				entries[#entries + 1] = e
+	for _, name in ipairs(DISTRICTS) do
+		local district = out:FindFirstChild(name)
+		local movers = district and district:FindFirstChild("Movers")
+		if movers then
+			folders[#folders + 1] = movers
+			for _, m in ipairs(movers:GetChildren()) do
+				if m:IsA("Model") then
+					local ok, e = pcall(setup, m)
+					if ok and e then
+						entries[#entries + 1] = e
+					end
+				end
 			end
 		end
 	end
+end
+
+-- true while every folder found by the last scan is still in the world
+local function foldersAlive()
+	if #folders == 0 then
+		return false
+	end
+	for _, f in ipairs(folders) do
+		if not f.Parent then
+			return false
+		end
+	end
+	return true
 end
 
 local function step()
@@ -121,7 +141,7 @@ function Ambient.start()
 	-- (re)find the movers whenever they are missing - the hub replicates in after the client starts
 	task.spawn(function()
 		while true do
-			if not folder or not folder.Parent or #entries == 0 then
+			if not foldersAlive() or #entries == 0 then
 				scan()
 			end
 			task.wait(3)

@@ -42,6 +42,14 @@ class Scene:
         return [a[list(t)] for t in f]
 
     @staticmethod
+    def _corner_wedge_tris(sx, sy, sz):
+        # Roblox CornerWedgePart: a square base whose apex sits over the (+X, -Z) corner
+        x, y, z = sx / 2, sy / 2, sz / 2
+        a = np.array([(-x, -y, -z), (x, -y, -z), (x, -y, z), (-x, -y, z), (x, y, -z)])
+        f = [(0, 2, 1), (0, 3, 2), (1, 2, 4), (0, 1, 4), (2, 3, 4), (3, 0, 4)]
+        return [a[list(t)] for t in f]
+
+    @staticmethod
     def _cyl_tris(length, dy, dz=None, n=24):
         """Cylinder along X with an elliptical cross-section (dy x dz). Returns (tri, normals) pairs."""
         dz = dy if dz is None else dz
@@ -105,6 +113,8 @@ class Scene:
             tris = self._cyl_tris(sx, sy, sz)
         elif sh == "Wedge":
             tris = self._wedge_tris(sx, sy, sz)
+        elif sh == "CornerWedge":
+            tris = self._corner_wedge_tris(sx, sy, sz)
         else:
             tris = self._box_tris(sx, sy, sz)
         alpha = 1.0 - part.get("t", 0.0)

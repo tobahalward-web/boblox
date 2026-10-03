@@ -34,7 +34,7 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes", math.huge) -- the serv
 local Net = Remotes:WaitForChild("Net")
 local FXRemote = Remotes:WaitForChild("FX")
 
-HubAmbient.start() -- traffic and pedestrians in the hub's Neon City
+HubAmbient.start() -- traffic, carts, skaters, koi and pedestrians in the hub's four districts
 
 ------------------------------------------------------------------------------------------
 -- Roblox defaults off
