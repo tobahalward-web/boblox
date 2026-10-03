@@ -270,8 +270,8 @@ local function applyR6(info, P)
 	-- (feet further apart front-to-back and side-to-side) with the body leaning into it. The deeper the
 	-- pose crouches (more negative py), the wider the stride gets.
 	local depth = math.max(0, -(P.py + 0.32))
-	local spread = 2.5 + depth * 1.2
-	local lean = (spread - 1) * 5
+	local spread = 1.2 + depth * 0.9
+	local lean = (spread - 1) * 6
 	local rootT = CFrame.new(P.px * s, P.py * s - lie, P.pz * s) * fromYXZ(rad(P.rx - lean * (1 - (P.ly or 0))), rad(P.ry), rad(P.rz))
 	local ground = info.ground
 
@@ -325,8 +325,8 @@ local function applyR6(info, P)
 	-- the full shoulder angle.
 	local function arm(sx, sy, sz, ex, side)
 		local bend = math.clamp((ex or 0) / 110, 0, 1)
-		local pitch = sx * (1 - 0.55 * bend)
-		local across = 38 * bend
+		local pitch = sx * (1 - 0.35 * bend)
+		local across = 10 * bend
 		return fromYXZ(rad(pitch), rad(sy), rad(sz + side * across))
 	end
 	setJoint(info, "ls", arm(P.lsx, P.lsy, P.lsz, P.lex, 1))

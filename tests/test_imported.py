@@ -139,16 +139,16 @@ class Imported(unittest.TestCase):
             low, _ = self.pose_floor(m, state)
             self.assertLess(abs(low), 0.6, f"{state}: lowest foot {low:.2f} above the floor")
 
-    def test_idle_is_a_wide_low_stance(self):
-        """Rigid legs can't bend, so the stance must be a wide A-frame with the hips well below standing height."""
+    def test_idle_is_a_moderate_stance(self):
+        """Rigid legs can't bend: the stance is a modest front-to-back stride, not a wide A-frame ('the splits')."""
         m = self.built("R6W")
         self.pose_floor(m, "Idle")
-        hip_y = m.FindFirstChild(m, "Torso").Position.Y  # the root is pinned by poseStatic; the torso carries the drop
-        self.assertLess(hip_y, 2.95, "hips should sit lower than the 3.0 of a straight standing body")
         L, R = m.FindFirstChild(m, "Left Leg").Position, m.FindFirstChild(m, "Right Leg").Position
-        apart = ((L.X - R.X) ** 2 + (L.Z - R.Z) ** 2) ** 0.5
-        self.assertGreater(apart, 1.2, "feet should be planted well apart")
-        self.assertGreater(abs(L.Z - R.Z), 0.6, "one foot forward, one back")
+        stride = abs(L.Z - R.Z)
+        side = abs(L.X - R.X)
+        self.assertGreater(stride, 0.4, "one foot should be ahead of the other")
+        self.assertLess(stride, 1.3, "but not a long stride")
+        self.assertLess(side, 1.9, "feet should not be planted very wide")
 
     def make_loose(self, name):
         """A body that is only loose parts (no limbs, no joints): legs low, arms out wide, head up high."""

@@ -966,7 +966,7 @@ function FighterModels.build(id, palette, displayName)
 		end)
 		if ok and IF then
 			local m, why = IF.build(def, displayName)
-			if not m then
+			if not m and ReplicatedStorage:FindFirstChild("FighterAssets") then
 				-- say why the imported body was not used (the procedural body takes over silently otherwise)
 				warn(string.format("[IronClash] %s: could not use model '%s' from ReplicatedStorage/FighterAssets (%s)", def.id, tostring(def.asset), tostring(why)))
 			end
