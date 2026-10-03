@@ -55,7 +55,8 @@ class HubDistricts(unittest.TestCase):
                 p, s = d.CFrame.p, d.Size
                 for c in (p.X, p.Y, p.Z, s.X, s.Y, s.Z):
                     self.assertFalse(math.isnan(c) or math.isinf(c), name)
-                self.assertTrue(s.X > 0 and s.Y > 0 and s.Z > 0, f"{name}: zero-size part {d.Name}")
+                # Roblox clamps part sizes to a 0.05 minimum, which would silently change thin parts
+                self.assertTrue(min(s.X, s.Y, s.Z) >= 0.05, f"{name}: part {d.Name} is thinner than 0.05 ({s.X:.3f}, {s.Y:.3f}, {s.Z:.3f})")
                 self.assertTrue(d.Anchored, f"{name}: unanchored part")
                 self.assertFalse(d.CanCollide, f"{name}: colliding scenery")
 

@@ -36,6 +36,24 @@ script sources in `IronClash/src` by `tools/build.py`, starting from `IronClash_
 | Lift Juggle | `1, 2, 3` then `1, 2, 4` |
 | Uppercut Juggle | `d/f+2` then `1, 2, 4` |
 
+**Hub districts** (`ServerScriptService/IronClashServer/Modules/Hub*.lua`, `StarterPlayerScripts/IronClashClient/HubAmbient.lua`)
+- The four regions around the hub plaza are each a designed, levelled district, all at the Neon City's level of detail:
+  `HubCity` (north), `HubVolcano` (east), `HubFrozen` (south) and `HubDojo` (west). `HubDistrict` holds what they share
+  (the district's own u/v coordinate frame, the terrain-levelling `pad`, and the mover and person builders).
+- **Volcano Forge**: lava moat and bridge, Forge Gate, Forge Road with canals either side, foundry halls with glowing
+  furnace doors, blast furnaces, gantry cranes, pipe runs, a fortress row with turrets and a lava fall, the Titan Tower,
+  an ore rail loop with carts, ore ropeways, slag trucks and smiths.
+- **Frozen Temple**: ice gate, lantern-lit causeway across the frozen Mirror Lake, a three-tier podium with the Hall of
+  the Ice Guardian, two pagodas, monk cabins, a hot spring, a frozen waterfall, ice spires and an aurora; skaters, monks
+  and floating lanterns.
+- **Sunset Dojo**: great torii and a tunnel of gates, koi pond with a taiko bridge and tea house, the walled dojo
+  compound (gatehouse, training yard, main hall, bell tower, storehouse), terraces and a stairway up to a hilltop
+  pagoda and shrine, farmhouses, cherry trees, bamboo and a low sun; disciples, villagers and swimming koi.
+- Everything a district builds is scenery behind the plaza wall. People, carts, skaters and koi live under each district's
+  `Movers` model and are moved on every client by `HubAmbient` along the paths stored in their attributes.
+- `HubOutskirts` levels the terrain under every district, keeps the generic scatter props off them, and builds the rest
+  of the land (hills, spires, pines) around them.
+
 **Rebindable controls** (`Shared/Keybinds.lua`, `IronClashClient/Controls.lua`)
 - Open CONTROLS from the main menu, the practice menu or the move list (KEYS).
 - Every action has four slots (keyboard and gamepad); click a slot, press the new key.
@@ -47,6 +65,7 @@ script sources in `IronClash/src` by `tools/build.py`, starting from `IronClash_
 python3 tools/extract.py IronClash_5.rbxlx IronClash      # place -> source tree
 python3 tools/build.py IronClash IronClash_6.rbxlx        # source tree -> place
 python3 tools/preview.py arena 2 out.png game             # geometry preview (not a Studio render)
+python3 tools/preview_hub.py out.png volcano plaza wide   # hub district preview (volcano|frozen|dojo|city; plaza gate wide top ...)
 python3 -m unittest discover -s tests                     # headless tests (needs `pip install lupa numpy pillow`)
 ```
 

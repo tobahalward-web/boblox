@@ -39,6 +39,7 @@ def view_for(kind, name, O):
         # standing on the plaza wall at the district's gate, looking straight down the avenue
         # what a player sees from the plaza: standing by the fountain side of the district's station
         "plaza": (at(0, 7, 52), at(0, 22, 200), 70, (1200, 600)),
+        "stairs": (at(0, 12, 190), at(0, 16, 236), 62, (1100, 600)),
         "gate": (at(0, 12, 70), at(0, 14, 200), 62, (1100, 600)),
         "left": (at(-40, 14, 74), at(40, 18, 180), 62, (1100, 600)),
         "right": (at(40, 14, 74), at(-40, 18, 180), 62, (1100, 600)),
