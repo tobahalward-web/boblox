@@ -101,7 +101,10 @@ def main(tree, out):
 
     # ---- fighter body models (tools/import_assets.py) -------------------------------------
     assets = tree / "assets" / "FighterAssets.xml"
-    if assets.exists():
+    # a template saved from Studio after the models were imported already contains them (and their shared
+    # strings): adding them again would declare every shared string twice and Studio refuses to open the file
+    already_in = '<string name="Name">FighterAssets</string>' in text
+    if assets.exists() and not already_in:
         if "ReplicatedStorage" not in items:
             raise SystemExit("no ReplicatedStorage in the place template")
         a_xml = assets.read_text(encoding="utf-8").strip() + "\n"
@@ -113,7 +116,10 @@ def main(tree, out):
         # the models' shared strings (md5 -> data) go in the file's <SharedStrings> section
         ss = tree / "assets" / "FighterAssets.sharedstrings.xml"
         if ss.exists():
-            defs = "".join("\t\t" + ln + "\n" for ln in ss.read_text(encoding="utf-8").splitlines() if ln.strip())
+            declared = set(re.findall(r'<SharedString md5="([^"]+)"', text))
+            blocks = [m.group(0) for m in re.finditer(r'<SharedString md5="([^"]+)">.*?</SharedString>', ss.read_text(encoding="utf-8"), re.S)
+                      if m.group(1) not in declared]
+            defs = "".join("\t\t" + blk + "\n" for blk in blocks)
             if "</SharedStrings>" in text:
                 text = text.replace("</SharedStrings>", defs + "\t</SharedStrings>", 1)
             else:
