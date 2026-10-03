@@ -399,10 +399,13 @@ function Rig.apply(info, P)
 	local ltCF = info.rootC0 * actualRoot * info.rootC1i
 	local ground = info.ground
 
+	-- Rigs that are not the game's own skeleton (imported R15 bodies) use a slightly shorter front-to-back stride:
+	-- their legs are a little shorter than the procedural fighters', and the full stride reads like the splits.
+	local stride = info.j.chest and 1 or 0.8
 	local sides = {
-		{ leg = info.L, w = P.lik, fx = P.lfx, fz = P.lfz, fy = P.lfy, fr = P.lfr, fp = P.lfp or 0,
+		{ leg = info.L, w = P.lik, fx = P.lfx, fz = P.lfz * stride, fy = P.lfy, fr = P.lfr, fp = P.lfp or 0,
 			hx = P.lhx, hy = P.lhy, hz = P.lhz, kx = P.lkx, ax = P.lax, keys = { "lh", "lk", "la" }, toe = "lto" },
-		{ leg = info.R, w = P.rik, fx = P.rfx, fz = P.rfz, fy = P.rfy, fr = P.rfr, fp = P.rfp or 0,
+		{ leg = info.R, w = P.rik, fx = P.rfx, fz = P.rfz * stride, fy = P.rfy, fr = P.rfr, fp = P.rfp or 0,
 			hx = P.rhx, hy = P.rhy, hz = P.rhz, kx = P.rkx, ax = P.rax, keys = { "rh", "rk", "ra" }, toe = "rto" },
 	}
 	local ltRot = ltCF.Rotation

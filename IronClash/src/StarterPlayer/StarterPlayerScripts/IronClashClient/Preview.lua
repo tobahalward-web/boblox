@@ -85,6 +85,10 @@ function Preview:pose(dt, animate)
 		P.ry = P.ry * 0.3
 	else
 		yaw = yaw + math.sin(self.t * 0.6) * math.rad(18)
+		-- the menu looks at the fighter from the front, where a long front-to-back stride is foreshortened into
+		-- something like the splits: shorten it for the preview
+		P.lfz, P.rfz = P.lfz * 0.55, P.rfz * 0.55
+		P.lfx, P.rfx = P.lfx * 0.9, P.rfx * 0.9
 	end
 	Rig.poseStatic(self.info, P, CFrame.new(0, self.info.hipCenter, 0) * CFrame.Angles(0, yaw, 0))
 	Secondary.step(self.sec, dt) -- hair / scarves / coat tails swing with the pose
