@@ -83,6 +83,9 @@ end
 
 local function findJoint(char, partName, jointName)
 	local part = char:FindFirstChild(partName)
+	if not part and partName == "UpperTorso" then
+		part = char:FindFirstChild("Torso") -- bodies that keep the R6 name for their upper body
+	end
 	if not part then
 		return nil
 	end

@@ -199,7 +199,7 @@ end
 -- elbow, wrist, knee and ankle joints, so the fighter can crouch and fold its guard. The new limb parts take
 -- the old limb's colour; anything painted onto the old limb parts (classic shirt / pants templates) is lost.
 -- Parts welded to a limb move to whichever segment they sit on.
-local function splitIntoR15(model, P, extras, root)
+local function splitIntoR15(model, P, extras, root, def)
 	local torso, head = P.Torso, P.Head
 	local t, h = torso.Size, head.Size
 	local function seg(name, size, cf, like)
@@ -219,8 +219,8 @@ local function splitIntoR15(model, P, extras, root)
 		return part
 	end
 
-	-- torso: the whole old torso becomes UpperTorso; a thin invisible LowerTorso carries the hips and root
-	torso.Name = "UpperTorso"
+	-- torso: the whole old torso stays the upper body and keeps its R6 name "Torso", so Roblox still dresses it with
+	-- the character's classic shirt / pants; a thin invisible LowerTorso carries the hips and root
 	local waistY = -t.Y / 2 + 0.5
 	local lower = seg("LowerTorso", Vector3.new(t.X, 0.5, t.Z), CFrame.new(0, -t.Y / 2 + 0.25, 0), torso)
 	lower.Transparency = 1
@@ -248,6 +248,10 @@ local function splitIntoR15(model, P, extras, root)
 		for i, name in ipairs(names) do
 			local sz = Vector3.new(X, sizes[i], Z)
 			local part = seg(name, sz, CFrame.new(cx, y - sizes[i] / 2, 0), src)
+			local tint = (kind == "Arm") and def and def.armColor or def and def.legColor
+			if tint then
+				part.Color = tint
+			end
 			N[name] = part
 			rec.segs[i] = part
 			rec.tops[i] = y
@@ -351,8 +355,8 @@ local function prepareR6(model, def)
 	P["Left Leg"].CFrame = CFrame.new(-ll.X / 2, -t.Y / 2 - ll.Y / 2, 0)
 
 	if not def or def.splitLimbs ~= false then
-		-- bendable limbs: rebuild as an R15-style body (see splitIntoR15)
-		local names = splitIntoR15(model, P, extras, root)
+		-- bendable limbs: rebuild with R15-style limb segments (see splitIntoR15)
+		local names = splitIntoR15(model, P, extras, root, def)
 		for _, part in pairs(names) do
 			part.Anchored = false
 			part.CanCollide = false
@@ -364,7 +368,9 @@ local function prepareR6(model, def)
 			hum = Instance.new("Humanoid")
 			hum.Parent = model
 		end
-		hum.RigType = Enum.HumanoidRigType.R15
+		-- R6 on purpose: Roblox then dresses only the part named "Torso" and leaves the new limb parts alone
+		-- (its R15 clothing mapping garbles plain block parts)
+		hum.RigType = Enum.HumanoidRigType.R6
 		model.PrimaryPart = root
 		return true
 	end

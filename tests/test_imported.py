@@ -213,8 +213,9 @@ class Imported(unittest.TestCase):
     def test_split_body_is_a_full_r15_rig(self):
         m = self.built("SPL1", split=True)
         names = {x.Name for x in lua_list(m.GetDescendants(m)) if x.IsA(x, "BasePart")}
-        self.assertTrue(set(self.R15_PARTS) <= names, set(self.R15_PARTS) - names)
-        self.assertNotIn("Torso", names)
+        needed = (set(self.R15_PARTS) - {"UpperTorso"}) | {"Torso"}  # the upper body keeps its R6 name (clothing)
+        self.assertTrue(needed <= names, needed - names)
+        self.assertNotIn("UpperTorso", names)
         self.assertNotIn("Left Arm", names)
         joints = {x.Name for x in lua_list(m.GetDescendants(m)) if x.IsA(x, "Motor6D")}
         for j in ("Root", "Waist", "Neck", "LeftShoulder", "LeftElbow", "LeftWrist", "LeftHip", "LeftKnee", "LeftAnkle",
